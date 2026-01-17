@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Camera, QrCode, CheckCircle, XCircle, ArrowLeft } from 'lucide-react';
 import { nfceService } from '../services/nfceService';
 import { invoiceOCRService } from '../services/invoiceOCRService';
-import QRCodeScanner from './QRCodeScanner';
+import QRCodeScannerLive from './QRCodeScannerLive';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001';
 
@@ -237,7 +237,7 @@ const MobileStockEntry: React.FC = () => {
         )}
 
         {showQRScanner && (
-          <QRCodeScanner
+          <QRCodeScannerLive
             onScan={handleQRCodeScan}
             onClose={() => setShowQRScanner(false)}
           />
