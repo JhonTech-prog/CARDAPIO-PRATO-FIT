@@ -1,6 +1,568 @@
-import React, { useState } from 'react';
-import { QrCode, CheckCircle, XCircle, Loader } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Camera, Key, CheckCircle, XCircle, Loader } from 'lucide-react';
 import { nfceService } from '../services/nfceService';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001';
+const GEMINI_API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY || 'AIzaSyAtdBlGO14fLgVGV_qfiRgi5cXPzRsc7DM';
+
+const MobileStockEntry: React.FC = () => {
+  const [accessKey, setAccessKey] = useState('');
+  const [processing, setProcessing] = useState(false);
+  const [invoiceData, setInvoiceData] = useState<any>(null);
+  const [history, setHistory] = useState<any[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const extractAccessKeyFromImage = async (base64Image: string): Promise<string | null> => {
+    try {
+      console.log('🤖 Iniciando extração da chave com Gemini AI...');
+      
+      const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+      const prompt = `
+Você é um OCR especializado em ler notas fiscais brasileiras (NFC-e).
+
+TAREFA: Extraia APENAS a CHAVE DE ACESSO (44 dígitos numéricos) desta nota fiscal.
+
+A chave de acesso fica geralmente:
+- Abaixo do QR Code
+- No rodapé da nota
+- Identificada como "Chave de Acesso" ou apenas uma sequência de 44 números
+
+IMPORTANTE:
+- Retorne APENAS os 44 dígitos, sem espaços, hífens ou formatação
+- Se não encontrar, retorne "CHAVE_NAO_ENCONTRADA"
+- Não retorne nenhum texto adicional, apenas os números
+
+Exemplo de formato correto: 25241112345678901234550010000123451234567890
+
+Agora analise a imagem e retorne a chave de acesso:
+`;
+
+      const imagePart = {
+        inlineData: {
+          data: base64Image.split(',')[1],
+          mimeType: 'image/jpeg'
+        }
+      };
+
+      const result = await model.generateContent([prompt, imagePart]);
+      const response = result.response;
+      const text = response.text().trim();
+      
+      console.log('🤖 Resposta do Gemini:', text);
+
+      // Extrai apenas números
+      const cleanKey = text.replace(/\D/g, '');
+      
+      if (cleanKey.length === 44) {
+        console.log('✅ Chave extraída com sucesso:', cleanKey);
+        return cleanKey;
+      } else if (text.includes('CHAVE_NAO_ENCONTRADA')) {
+        console.log('❌ Chave não encontrada na imagem');
+        return null;
+      } else {
+        console.log('⚠️ Chave inválida (não tem 44 dígitos):', cleanKey);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Erro ao extrair chave:', error);
+      return null;
+    }
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setProcessing(true);
+    
+    try {
+      console.log('📷 Processando foto da nota fiscal...');
+      
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const base64Image = event.target?.result as string;
+        
+        // Extrai chave de acesso com Gemini AI
+        const key = await extractAccessKeyFromImage(base64Image);
+        
+        if (!key) {
+          alert('❌ Não foi possível ler a chave de acesso da foto.\n\nDicas:\n• Tire foto da parte inferior da nota\n• Certifique-se que os números estão visíveis\n• Evite reflexo e sombra');
+          setProcessing(false);
+          return;
+        }
+
+        // Atualiza o campo
+        setAccessKey(key);
+        
+        // Processa automaticamente
+        await processAccessKey(key);
+      };
+      
+      reader.readAsDataURL(file);
+    } catch (error: any) {
+      console.error('❌ Erro:', error);
+      alert(`Erro ao processar foto: ${error.message}`);
+      setProcessing(false);
+    }
+  };
+
+  const processAccessKey = async (key: string) => {
+    try {
+      console.log('🔍 Buscando nota fiscal na SEFAZ...');
+      
+      // Monta URL da SEFAZ
+      const nfceUrl = `https://www.sefaz.pb.gov.br/nfce/qrcode?p=${key}|2|1|1|`;
+      
+      const data = await nfceService.processQRCode(nfceUrl);
+      
+      if (!data.items || data.items.length === 0) {
+        alert('⚠️ Nenhum produto encontrado na nota fiscal!');
+        setProcessing(false);
+        return;
+      }
+      
+      setInvoiceData(data);
+      setProcessing(false);
+    } catch (error: any) {
+      console.error('❌ Erro:', error);
+      alert(`Erro ao buscar nota: ${error.message}`);
+      setProcessing(false);
+    }
+  };
+
+  const handleProcessKey = async () => {
+    const cleanKey = accessKey.replace(/\s/g, '');
+    
+    if (cleanKey.length !== 44) {
+      alert('⚠️ A chave de acesso deve ter 44 dígitos!');
+      return;
+    }
+
+    setProcessing(true);
+    await processAccessKey(cleanKey);
+  };
+
+  const handleSave = async () => {
+    if (!invoiceData) return;
+
+    setProcessing(true);
+    try {
+      const response = await fetch(`${API_URL}/api/stock-entries/bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          supplier: invoiceData.supplier,
+          invoiceNumber: invoiceData.invoiceNumber,
+          date: invoiceData.date,
+          items: invoiceData.items,
+          source: 'nota_fiscal'
+        })
+      });
+
+      if (response.ok) {
+        setHistory([{ ...invoiceData, timestamp: new Date() }, ...history]);
+        setInvoiceData(null);
+        setAccessKey('');
+        alert('✅ Entrada registrada com sucesso!');
+      } else {
+        throw new Error('Erro ao salvar');
+      }
+    } catch (error: any) {
+      alert(`Erro ao salvar: ${error.message}`);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-blue-50">
+      {/* Header */}
+      <div className="bg-emerald-600 text-white p-4 sticky top-0 z-10 shadow-lg">
+        <h1 className="text-xl font-black">📦 Entrada de Estoque</h1>
+        <p className="text-xs text-emerald-100 mt-1">PratoFit - Gestão Mobile</p>
+      </div>
+
+      <div className="p-4 pb-20">
+        {!invoiceData ? (
+          <>
+            {/* Botão Tirar Foto */}
+            <label className="block mb-4">
+              <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white p-8 rounded-2xl shadow-lg active:scale-95 transition cursor-pointer text-center">
+                <Camera size={64} className="mx-auto mb-4" />
+                <div className="font-bold text-2xl mb-2">Tirar Foto da Nota</div>
+                <div className="text-sm text-emerald-100">A IA vai ler a chave automaticamente</div>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handlePhotoUpload}
+                className="hidden"
+              />
+            </label>
+
+            {/* Opção Manual */}
+            <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+              <div className="text-center mb-4">
+                <Key size={48} className="mx-auto text-blue-600 mb-2" />
+                <h3 className="font-bold text-gray-800">Ou digite manualmente</h3>
+              </div>
+
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={44}
+                  value={accessKey}
+                  onChange={(e) => setAccessKey(e.target.value.replace(/\D/g, ''))}
+                  placeholder="44 dígitos da chave de acesso"
+                  className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 outline-none text-center font-mono text-sm"
+                />
+                <div className="text-xs text-gray-500 text-center">
+                  {accessKey.length}/44 dígitos
+                </div>
+
+                <button
+                  onClick={handleProcessKey}
+                  disabled={processing || accessKey.length !== 44}
+                  className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold active:scale-95 transition disabled:bg-gray-300"
+                >
+                  Buscar Nota
+                </button>
+              </div>
+            </div>
+
+            {/* Histórico */}
+            {history.length > 0 && (
+              <div className="bg-white rounded-2xl shadow p-4">
+                <h3 className="font-bold text-gray-800 mb-3">📋 Últimas Entradas</h3>
+                <div className="space-y-2">
+                  {history.slice(0, 5).map((item, idx) => (
+                    <div key={idx} className="border-l-4 border-emerald-500 bg-emerald-50 p-3 rounded">
+                      <div className="font-bold text-sm">{item.supplier}</div>
+                      <div className="text-xs text-gray-600">
+                        {item.items?.length || 1} itens - R$ {(item.totalValue || 0).toFixed(2)}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {new Date(item.timestamp).toLocaleString('pt-BR')}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          // Preview da Nota Fiscal
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl shadow-lg p-4">
+              <h3 className="font-bold text-lg mb-4">✅ Confirmar Entrada</h3>
+
+              <div className="space-y-2 mb-4 bg-gray-50 p-3 rounded-lg">
+                <div>
+                  <div className="text-xs text-gray-500">Fornecedor</div>
+                  <div className="font-bold">{invoiceData.supplier}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">Valor Total</div>
+                  <div className="font-bold text-emerald-600 text-xl">
+                    R$ {invoiceData.totalValue?.toFixed(2)}
+                  </div>
+                </div>
+              </div>
+
+              <h4 className="font-bold mb-2">Produtos ({invoiceData.items.length})</h4>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {invoiceData.items.map((item: any, idx: number) => (
+                  <div key={idx} className="bg-gray-50 p-3 rounded-lg border">
+                    <div className="font-bold text-sm">{item.name}</div>
+                    <div className="text-xs text-gray-600 mt-1">
+                      {item.quantity} {item.unit} × R$ {item.unitCost?.toFixed(2)} = 
+                      <span className="text-emerald-600 font-bold ml-1">
+                        R$ {item.totalCost?.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setInvoiceData(null); setAccessKey(''); }}
+                className="flex-1 bg-gray-500 text-white py-4 rounded-xl font-bold active:scale-95 transition"
+              >
+                <XCircle size={20} className="inline mr-2" />
+                Cancelar
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={processing}
+                className="flex-1 bg-emerald-600 text-white py-4 rounded-xl font-bold active:scale-95 transition disabled:bg-gray-300"
+              >
+                <CheckCircle size={20} className="inline mr-2" />
+                Confirmar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {processing && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-6 max-w-sm mx-4">
+              <Loader className="animate-spin h-12 w-12 text-emerald-600 mx-auto mb-3" />
+              <div className="font-bold text-center">Processando...</div>
+              <div className="text-sm text-gray-600 text-center mt-2">
+                A IA está lendo a nota fiscal
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default MobileStockEntry;
+
+const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001';
+
+const MobileStockEntry: React.FC = () => {
+  const [accessKey, setAccessKey] = useState('');
+  const [processing, setProcessing] = useState(false);
+  const [invoiceData, setInvoiceData] = useState<any>(null);
+  const [history, setHistory] = useState<any[]>([]);
+
+  const handleProcessKey = async () => {
+    // Remove espaços e valida
+    const cleanKey = accessKey.replace(/\s/g, '');
+    
+    if (cleanKey.length !== 44) {
+      alert('⚠️ A chave de acesso deve ter 44 dígitos!');
+      return;
+    }
+
+    setProcessing(true);
+    
+    try {
+      console.log('🔍 Processando chave de acesso...');
+      
+      // Monta URL da SEFAZ usando a chave de acesso
+      // Formato: https://www.sefaz.pb.gov.br/nfce/qrcode?p=CHAVE|2|1|1|HASH
+      const nfceUrl = `https://www.sefaz.pb.gov.br/nfce/qrcode?p=${cleanKey}|2|1|1|`;
+      
+      const data = await nfceService.processQRCode(nfceUrl);
+      
+      if (!data.items || data.items.length === 0) {
+        alert('⚠️ Nenhum produto encontrado na nota fiscal!');
+        return;
+      }
+      
+      setInvoiceData(data);
+      setAccessKey(''); // Limpa o campo
+    } catch (error: any) {
+      console.error('❌ Erro:', error);
+      alert(`Erro ao processar: ${error.message}`);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!invoiceData) return;
+
+    setProcessing(true);
+    try {
+      const response = await fetch(`${API_URL}/api/stock-entries/bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          supplier: invoiceData.supplier,
+          invoiceNumber: invoiceData.invoiceNumber,
+          date: invoiceData.date,
+          items: invoiceData.items,
+          source: 'nota_fiscal'
+        })
+      });
+
+      if (response.ok) {
+        setHistory([{ ...invoiceData, timestamp: new Date() }, ...history]);
+        setInvoiceData(null);
+        alert('✅ Entrada registrada com sucesso!');
+      } else {
+        throw new Error('Erro ao salvar');
+      }
+    } catch (error: any) {
+      alert(`Erro ao salvar: ${error.message}`);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-blue-50">
+      {/* Header */}
+      <div className="bg-emerald-600 text-white p-4 sticky top-0 z-10 shadow-lg">
+        <h1 className="text-xl font-black">📦 Entrada de Estoque</h1>
+        <p className="text-xs text-emerald-100 mt-1">PratoFit - Gestão Mobile</p>
+      </div>
+
+      <div className="p-4 pb-20">
+        {!invoiceData ? (
+          <>
+            {/* Formulário Chave de Acesso */}
+            <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+              <div className="text-center mb-6">
+                <Key size={64} className="mx-auto text-emerald-600 mb-3" />
+                <h2 className="text-xl font-bold text-gray-800">Chave de Acesso</h2>
+                <p className="text-sm text-gray-600 mt-2">
+                  Digite os 44 números da chave de acesso da nota fiscal
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Chave de Acesso (44 dígitos)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={44}
+                    value={accessKey}
+                    onChange={(e) => setAccessKey(e.target.value.replace(/\D/g, ''))}
+                    placeholder="00000000000000000000000000000000000000000000"
+                    className="w-full p-4 border-2 border-gray-300 rounded-xl focus:border-emerald-500 outline-none text-center font-mono text-sm"
+                  />
+                  <div className="text-xs text-gray-500 text-center mt-2">
+                    {accessKey.length}/44 dígitos
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleProcessKey}
+                  disabled={processing || accessKey.length !== 44}
+                  className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold text-lg active:scale-95 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  {processing ? (
+                    <>
+                      <Loader className="inline animate-spin mr-2" size={20} />
+                      Processando...
+                    </>
+                  ) : (
+                    <>
+                      <Key className="inline mr-2" size={20} />
+                      Buscar Nota Fiscal
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="mt-6 p-4 bg-blue-50 rounded-xl">
+                <div className="text-xs text-blue-800">
+                  <div className="font-bold mb-2">💡 Onde encontrar a chave?</div>
+                  <ul className="space-y-1 ml-4">
+                    <li>• Abaixo do QR Code da nota fiscal</li>
+                    <li>• Sequência de 44 números</li>
+                    <li>• Exemplo: 25241112345678901234550010000123451234567890</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Histórico */}
+            {history.length > 0 && (
+              <div className="bg-white rounded-2xl shadow p-4">
+                <h3 className="font-bold text-gray-800 mb-3">📋 Últimas Entradas</h3>
+                <div className="space-y-2">
+                  {history.slice(0, 5).map((item, idx) => (
+                    <div key={idx} className="border-l-4 border-emerald-500 bg-emerald-50 p-3 rounded">
+                      <div className="font-bold text-sm">{item.supplier}</div>
+                      <div className="text-xs text-gray-600">
+                        {item.items?.length || 1} itens - R$ {(item.totalValue || item.items?.[0]?.totalCost || 0).toFixed(2)}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {new Date(item.timestamp).toLocaleString('pt-BR')}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          // Preview da Nota Fiscal
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl shadow-lg p-4">
+              <h3 className="font-bold text-lg mb-4">✅ Confirmar Entrada</h3>
+
+              <div className="space-y-2 mb-4 bg-gray-50 p-3 rounded-lg">
+                <div>
+                  <div className="text-xs text-gray-500">Fornecedor</div>
+                  <div className="font-bold">{invoiceData.supplier}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">Valor Total</div>
+                  <div className="font-bold text-emerald-600 text-xl">
+                    R$ {invoiceData.totalValue?.toFixed(2)}
+                  </div>
+                </div>
+              </div>
+
+              <h4 className="font-bold mb-2">Produtos ({invoiceData.items.length})</h4>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {invoiceData.items.map((item: any, idx: number) => (
+                  <div key={idx} className="bg-gray-50 p-3 rounded-lg border">
+                    <div className="font-bold text-sm">{item.name}</div>
+                    <div className="text-xs text-gray-600 mt-1">
+                      {item.quantity} {item.unit} × R$ {item.unitCost?.toFixed(2)} = 
+                      <span className="text-emerald-600 font-bold ml-1">
+                        R$ {item.totalCost?.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setInvoiceData(null)}
+                className="flex-1 bg-gray-500 text-white py-4 rounded-xl font-bold active:scale-95 transition"
+              >
+                <XCircle size={20} className="inline mr-2" />
+                Cancelar
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={processing}
+                className="flex-1 bg-emerald-600 text-white py-4 rounded-xl font-bold active:scale-95 transition disabled:bg-gray-300"
+              >
+                <CheckCircle size={20} className="inline mr-2" />
+                Confirmar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {processing && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-6">
+              <Loader className="animate-spin h-12 w-12 text-emerald-600 mx-auto mb-3" />
+              <div className="font-bold text-center">Processando...</div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default MobileStockEntry;
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001';
 
