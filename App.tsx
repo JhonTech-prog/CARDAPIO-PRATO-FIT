@@ -10,7 +10,7 @@ import AIChef from './components/AIChef';
 import CheckoutModal from './components/CheckoutModal';
 import LimitReachedModal from './components/LimitReachedModal';
 import AdminPanel from './components/AdminPanel';
-import MobileStockEntry from './components/MobileStockEntry';
+import MobileStockEntry from './components/MobileStockEntryNew';
 import { ShoppingBag, Search, ArrowLeft, PackageCheck, Lock, ShieldCheck } from 'lucide-react';
 
 const App: React.FC = () => {
