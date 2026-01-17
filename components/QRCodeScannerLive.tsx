@@ -17,7 +17,12 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({ onScan, onClose }) => {
   const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    startCamera();
+    // Solicita câmera imediatamente ao montar
+    const initCamera = async () => {
+      await startCamera();
+    };
+    initCamera();
+    
     return () => {
       stopCamera();
       if (scanIntervalRef.current) {
@@ -40,12 +45,23 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({ onScan, onClose }) => {
       
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        videoRef.current.setAttribute('playsinline', 'true');
+        videoRef.current.setAttribute('autoplay', 'true');
+        
         videoRef.current.onloadedmetadata = () => {
-          videoRef.current?.play();
-          setCameraActive(true);
-          setScanning(true);
-          startScanning();
+          videoRef.current?.play().then(() => {
+            console.log('✅ Vídeo iniciado');
+            setCameraActive(true);
+            setScanning(true);
+            setError('');
+            startScanning();
+          }).catch((err) => {
+            console.error('Erro ao iniciar vídeo:', err);
+            setError('Erro ao iniciar câmera. Tente novamente.');
+            setShowUploadOption(true);
+          });
         };
+        
         setStream(mediaStream);
         console.log('✅ Câmera ativada com sucesso!');
       }
@@ -222,7 +238,9 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({ onScan, onClose }) => {
               autoPlay
               playsInline
               muted
+              webkit-playsinline="true"
               className="w-full h-full object-cover"
+              style={{ transform: 'scaleX(-1)' }}
             />
             
             {/* Scanning Overlay */}
