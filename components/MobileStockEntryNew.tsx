@@ -1,23 +1,14 @@
 import React, { useState } from 'react';
-import { QrCode, Edit, CheckCircle, XCircle, Loader } from 'lucide-react';
+import { QrCode, CheckCircle, XCircle, Loader } from 'lucide-react';
 import { nfceService } from '../services/nfceService';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001';
 
 const MobileStockEntry: React.FC = () => {
   const [showCamera, setShowCamera] = useState(false);
-  const [showManualEntry, setShowManualEntry] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [invoiceData, setInvoiceData] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
-  
-  // Estados para entrada manual
-  const [manualProduct, setManualProduct] = useState({
-    name: '',
-    quantity: '',
-    unit: 'kg',
-    unitCost: '',
-  });
 
   const handleQRCodeScan = async (qrCodeData: string) => {
     setShowCamera(false);
@@ -72,50 +63,6 @@ const MobileStockEntry: React.FC = () => {
     }
   };
 
-  const handleManualSave = async () => {
-    if (!manualProduct.name || !manualProduct.quantity || !manualProduct.unitCost) {
-      alert('⚠️ Preencha todos os campos!');
-      return;
-    }
-
-    setProcessing(true);
-    try {
-      const quantity = parseFloat(manualProduct.quantity);
-      const unitCost = parseFloat(manualProduct.unitCost);
-      const totalCost = quantity * unitCost;
-
-      const response = await fetch(`${API_URL}/api/stock-entries/bulk`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          supplier: 'EMPASA/Feira',
-          invoiceNumber: 'MANUAL',
-          date: new Date().toISOString().split('T')[0],
-          items: [{
-            name: manualProduct.name,
-            quantity: quantity,
-            unit: manualProduct.unit,
-            unitCost: unitCost,
-            totalCost: totalCost
-          }],
-          source: 'empasa'
-        })
-      });
-
-      if (response.ok) {
-        alert(`✅ ${manualProduct.name} registrado com sucesso!`);
-        setManualProduct({ name: '', quantity: '', unit: 'kg', unitCost: '' });
-        setShowManualEntry(false);
-      } else {
-        throw new Error('Erro ao salvar');
-      }
-    } catch (error: any) {
-      alert(`Erro: ${error.message}`);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
   if (showCamera) {
     return <CameraScanner onScan={handleQRCodeScan} onClose={() => setShowCamera(false)} />;
   }
@@ -129,26 +76,17 @@ const MobileStockEntry: React.FC = () => {
       </div>
 
       <div className="p-4 pb-20">
-        {!invoiceData && !showManualEntry ? (
+        {!invoiceData ? (
           <>
-            {/* Botões Principais */}
+            {/* Botão QR Code */}
             <div className="space-y-4 mb-6">
               <button
                 onClick={() => setShowCamera(true)}
-                className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 text-white p-6 rounded-2xl shadow-lg active:scale-95 transition-transform"
+                className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 text-white p-8 rounded-2xl shadow-lg active:scale-95 transition-transform"
               >
-                <QrCode size={48} className="mx-auto mb-3" />
-                <div className="font-bold text-lg">Escanear QR Code</div>
-                <div className="text-xs text-emerald-100">Nota Fiscal Eletrônica</div>
-              </button>
-
-              <button
-                onClick={() => setShowManualEntry(true)}
-                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white p-6 rounded-2xl shadow-lg active:scale-95 transition-transform"
-              >
-                <Edit size={48} className="mx-auto mb-3" />
-                <div className="font-bold text-lg">Entrada Manual</div>
-                <div className="text-xs text-blue-100">EMPASA, Feira, etc</div>
+                <QrCode size={64} className="mx-auto mb-4" />
+                <div className="font-bold text-2xl mb-2">Escanear QR Code</div>
+                <div className="text-sm text-emerald-100">Aponte a câmera para o QR Code da nota fiscal</div>
               </button>
             </div>
 
@@ -225,89 +163,7 @@ const MobileStockEntry: React.FC = () => {
                 placeholder="6.50"
                 value={manualProduct.unitCost}
                 onChange={(e) => setManualProduct({...manualProduct, unitCost: e.target.value})}
-                className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-emerald-500 outline-none"
-              />
-            </div>
-
-            {manualProduct.quantity && manualProduct.unitCost && (
-              <div className="bg-emerald-50 p-4 rounded-xl">
-                <div className="text-sm text-gray-600">Total</div>
-                <div className="text-2xl font-bold text-emerald-600">
-                  R$ {(parseFloat(manualProduct.quantity) * parseFloat(manualProduct.unitCost)).toFixed(2)}
-                </div>
-              </div>
-            )}
-
-            <div className="flex gap-3 pt-4">
-              <button
-                onClick={() => setShowManualEntry(false)}
-                className="flex-1 bg-gray-500 text-white py-4 rounded-xl font-bold active:scale-95 transition"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleManualSave}
-                disabled={processing}
-                className="flex-1 bg-emerald-600 text-white py-4 rounded-xl font-bold active:scale-95 transition disabled:bg-gray-300"
-              >
-                {processing ? 'Salvando...' : 'Salvar'}
-              </button>
-            </div>
-          </div>
-        ) : (
-          // Preview da Nota Fiscal
-          <div className="space-y-4">
-            <div className="bg-white rounded-2xl shadow-lg p-4">
-              <h3 className="font-bold text-lg mb-4">✅ Confirmar Entrada</h3>
-
-              <div className="space-y-2 mb-4 bg-gray-50 p-3 rounded-lg">
-                <div>
-                  <div className="text-xs text-gray-500">Fornecedor</div>
-                  <div className="font-bold">{invoiceData.supplier}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500">Valor Total</div>
-                  <div className="font-bold text-emerald-600 text-xl">
-                    R$ {invoiceData.totalValue?.toFixed(2)}
-                  </div>
-                </div>
-              </div>
-
-              <h4 className="font-bold mb-2">Produtos ({invoiceData.items.length})</h4>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {invoiceData.items.map((item: any, idx: number) => (
-                  <div key={idx} className="bg-gray-50 p-3 rounded-lg border">
-                    <div className="font-bold text-sm">{item.name}</div>
-                    <div className="text-xs text-gray-600 mt-1">
-                      {item.quantity} {item.unit} × R$ {item.unitCost?.toFixed(2)} = 
-                      <span className="text-emerald-600 font-bold ml-1">
-                        R$ {item.totalCost?.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setInvoiceData(null)}
-                className="flex-1 bg-gray-500 text-white py-4 rounded-xl font-bold active:scale-95 transition"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={processing}
-                className="flex-1 bg-emerald-600 text-white py-4 rounded-xl font-bold active:scale-95 transition disabled:bg-gray-300"
-              >
-                Confirmar
-              </button>
-            </div>
-          </div>
-        )}
-
-        {processing && (
+            cessing && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-2xl p-6">
               <Loader className="animate-spin h-12 w-12 text-emerald-600 mx-auto mb-3" />
