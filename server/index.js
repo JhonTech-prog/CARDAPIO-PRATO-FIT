@@ -34,6 +34,24 @@ const Product = mongoose.model('Product', productSchema);
 
 // ================== ROTAS ==================
 
+// GET - Health check (para manter servidor ativo)
+app.get('/', (req, res) => {
+  res.json({ 
+    status: 'online', 
+    message: 'PratoFit API - Sistema de Gestão de Estoque',
+    version: '2.0',
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'healthy',
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    uptime: process.uptime()
+  });
+});
+
 // GET - Buscar todos os produtos (retorna apenas estoque)
 app.get('/api/products', async (req, res) => {
   try {
