@@ -4,7 +4,7 @@ import { Package, Plus, AlertTriangle, TrendingDown, Search, Upload, Camera, Spa
 import { recipeOCRService } from '../services/recipeOCRService';
 import { invoiceOCRService } from '../services/invoiceOCRService';
 import { nfceService } from '../services/nfceService';
-import QRCodeScanner from './QRCodeScanner';
+// import QRCodeScanner from './QRCodeScanner'; // Removido temporariamente
 
 interface Ingredient {
   _id?: string;
@@ -889,12 +889,12 @@ const IngredientsManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               </div>
 
               {/* QR Code Scanner Modal */}
-              {showQRScanner && (
+              {/* {showQRScanner && (
                 <QRCodeScanner
                   onScan={handleQRCodeScan}
                   onClose={() => setShowQRScanner(false)}
                 />
-              )}
+              )} */}
 
               {/* Processing indicator */}
               {invoiceProcessing && (

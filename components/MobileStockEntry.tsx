@@ -402,15 +402,48 @@ ANALISE A IMAGEM:
       <div className="p-4 pb-20">
         {!invoiceData ? (
           <>
-            {/* PASSO 1: Extrair Código da Nota Física */}
-            <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl shadow-lg p-6 mb-4">
-              <h2 className="text-white font-bold text-lg mb-3">📸 PASSO 1: Extrair Código</h2>
-              <p className="text-white text-sm mb-4">Foto do cupom físico → IA extrai o código de 44 dígitos</p>
+            {/* MÉTODO PRINCIPAL: Upload do Print da SEFAZ */}
+            <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl shadow-lg p-6 mb-4">
+              <h2 className="text-white font-bold text-lg mb-3">🎯 MÉTODO RECOMENDADO</h2>
+              <p className="text-white text-sm mb-4">
+                1. Escaneie QR Code do cupom (câmera do celular)<br/>
+                2. Site da SEFAZ abre → Clique "Consultar"<br/>
+                3. Tire PRINT da tela com produtos<br/>
+                4. Faça upload abaixo ⬇️
+              </p>
               
               <label className="block">
-                <div className="bg-white text-orange-600 p-6 rounded-xl shadow active:scale-95 transition cursor-pointer text-center">
+                <div className="bg-white text-blue-600 p-6 rounded-xl shadow active:scale-95 transition cursor-pointer text-center">
                   <Camera size={48} className="mx-auto mb-3" />
-                  <div className="font-bold text-xl mb-2">Tirar Foto do Cupom</div>
+                  <div className="font-bold text-xl mb-2">📱 Upload Print da SEFAZ</div>
+                  <div className="text-sm text-gray-600">
+                    Print da tela com produtos → IA cadastra tudo
+                  </div>
+                </div>
+                <input
+                  ref={invoiceScreenshotRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleInvoiceScreenshot}
+                  className="hidden"
+                  disabled={processing}
+                />
+              </label>
+            </div>
+
+            <div className="text-center text-gray-400 text-sm my-4 font-bold">
+              ─── OU (menos confiável) ───
+            </div>
+
+            {/* PASSO 1: Extrair Código da Nota Física */}
+            <div className="bg-gray-100 rounded-2xl shadow p-6 mb-4 border-2 border-gray-300">
+              <h2 className="text-gray-700 font-bold text-lg mb-3">📸 Extrair Código Automaticamente</h2>
+              <p className="text-gray-600 text-sm mb-4">Foto do cupom físico → IA tenta extrair código</p>
+              
+              <label className="block">
+                <div className="bg-white text-gray-700 p-6 rounded-xl shadow active:scale-95 transition cursor-pointer text-center border">
+                  <Camera size={48} className="mx-auto mb-3" />
+                  <div className="font-bold text-xl mb-2">Tentar Ler Cupom</div>
                   <div className="text-sm text-gray-600">
                     Tire foto do RODAPÉ (QR Code + números)
                   </div>
@@ -455,43 +488,16 @@ ANALISE A IMAGEM:
                 </a>
                 
                 <div className="mt-3 p-3 bg-yellow-50 border border-yellow-300 rounded text-sm">
-                  <strong>⚠️ Próximos passos:</strong>
+                  <strong>⚠️ Agora:</strong>
                   <ol className="list-decimal ml-4 mt-2 space-y-1">
-                    <li>Clique em "Abrir na SEFAZ"</li>
+                    <li>Clique em "Abrir na SEFAZ" acima</li>
                     <li>Cole o código e clique "Consultar"</li>
-                    <li>Aguarde a nota carregar</li>
                     <li>Tire PRINT da tela completa</li>
-                    <li>Volte aqui e faça upload do print ⬇️</li>
+                    <li>Use o botão azul no topo para upload ⬆️</li>
                   </ol>
                 </div>
               </div>
             )}
-
-            <div className="text-center text-gray-500 text-sm my-4 font-bold">OU</div>
-
-            {/* PASSO 2: Upload do Print da SEFAZ */}
-            <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl shadow-lg p-6 mb-4">
-              <h2 className="text-white font-bold text-lg mb-3">📱 PASSO 2: Print da Nota Digital</h2>
-              <p className="text-white text-sm mb-4">Já consultou na SEFAZ? Envie o print!</p>
-              
-              <label className="block">
-                <div className="bg-white text-blue-600 p-6 rounded-xl shadow active:scale-95 transition cursor-pointer text-center">
-                  <Camera size={48} className="mx-auto mb-3" />
-                  <div className="font-bold text-xl mb-2">Upload Print da SEFAZ</div>
-                  <div className="text-sm text-gray-600">
-                    Print da tela com os produtos → IA cadastra tudo
-                  </div>
-                </div>
-                <input
-                  ref={invoiceScreenshotRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleInvoiceScreenshot}
-                  className="hidden"
-                  disabled={processing}
-                />
-              </label>
-            </div>
 
             <div className="text-center text-gray-500 text-sm my-4">ou digite manualmente</div>
 
@@ -612,524 +618,6 @@ ANALISE A IMAGEM:
             </div>
           </div>
         )}
-      </div>
-    </div>
-  );
-};
-
-export default MobileStockEntry;
-
-const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001';
-
-const MobileStockEntry: React.FC = () => {
-  const [accessKey, setAccessKey] = useState('');
-  const [processing, setProcessing] = useState(false);
-  const [invoiceData, setInvoiceData] = useState<any>(null);
-  const [history, setHistory] = useState<any[]>([]);
-
-  const handleProcessKey = async () => {
-    // Remove espaços e valida
-    const cleanKey = accessKey.replace(/\s/g, '');
-    
-    if (cleanKey.length !== 44) {
-      alert('⚠️ A chave de acesso deve ter 44 dígitos!');
-      return;
-    }
-
-    setProcessing(true);
-    
-    try {
-      console.log('🔍 Processando chave de acesso...');
-      
-      // Monta URL da SEFAZ usando a chave de acesso
-      // Formato: https://www.sefaz.pb.gov.br/nfce/qrcode?p=CHAVE|2|1|1|HASH
-      const nfceUrl = `https://www.sefaz.pb.gov.br/nfce/qrcode?p=${cleanKey}|2|1|1|`;
-      
-      const data = await nfceService.processQRCode(nfceUrl);
-      
-      if (!data.items || data.items.length === 0) {
-        alert('⚠️ Nenhum produto encontrado na nota fiscal!');
-        return;
-      }
-      
-      setInvoiceData(data);
-      setAccessKey(''); // Limpa o campo
-    } catch (error: any) {
-      console.error('❌ Erro:', error);
-      alert(`Erro ao processar: ${error.message}`);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!invoiceData) return;
-
-    setProcessing(true);
-    try {
-      const response = await fetch(`${API_URL}/api/stock-entries/bulk`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          supplier: invoiceData.supplier,
-          invoiceNumber: invoiceData.invoiceNumber,
-          date: invoiceData.date,
-          items: invoiceData.items,
-          source: 'nota_fiscal'
-        })
-      });
-
-      if (response.ok) {
-        setHistory([{ ...invoiceData, timestamp: new Date() }, ...history]);
-        setInvoiceData(null);
-        alert('✅ Entrada registrada com sucesso!');
-      } else {
-        throw new Error('Erro ao salvar');
-      }
-    } catch (error: any) {
-      alert(`Erro ao salvar: ${error.message}`);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-blue-50">
-      {/* Header */}
-      <div className="bg-emerald-600 text-white p-4 sticky top-0 z-10 shadow-lg">
-        <h1 className="text-xl font-black">📦 Entrada de Estoque</h1>
-        <p className="text-xs text-emerald-100 mt-1">PratoFit - Gestão Mobile</p>
-      </div>
-
-      <div className="p-4 pb-20">
-        {!invoiceData ? (
-          <>
-            {/* Formulário Chave de Acesso */}
-            <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-              <div className="text-center mb-6">
-                <Key size={64} className="mx-auto text-emerald-600 mb-3" />
-                <h2 className="text-xl font-bold text-gray-800">Chave de Acesso</h2>
-                <p className="text-sm text-gray-600 mt-2">
-                  Digite os 44 números da chave de acesso da nota fiscal
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Chave de Acesso (44 dígitos)
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={44}
-                    value={accessKey}
-                    onChange={(e) => setAccessKey(e.target.value.replace(/\D/g, ''))}
-                    placeholder="00000000000000000000000000000000000000000000"
-                    className="w-full p-4 border-2 border-gray-300 rounded-xl focus:border-emerald-500 outline-none text-center font-mono text-sm"
-                  />
-                  <div className="text-xs text-gray-500 text-center mt-2">
-                    {accessKey.length}/44 dígitos
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleProcessKey}
-                  disabled={processing || accessKey.length !== 44}
-                  className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold text-lg active:scale-95 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
-                >
-                  {processing ? (
-                    <>
-                      <Loader className="inline animate-spin mr-2" size={20} />
-                      Processando...
-                    </>
-                  ) : (
-                    <>
-                      <Key className="inline mr-2" size={20} />
-                      Buscar Nota Fiscal
-                    </>
-                  )}
-                </button>
-              </div>
-
-              <div className="mt-6 p-4 bg-blue-50 rounded-xl">
-                <div className="text-xs text-blue-800">
-                  <div className="font-bold mb-2">💡 Onde encontrar a chave?</div>
-                  <ul className="space-y-1 ml-4">
-                    <li>• Abaixo do QR Code da nota fiscal</li>
-                    <li>• Sequência de 44 números</li>
-                    <li>• Exemplo: 25241112345678901234550010000123451234567890</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            {/* Histórico */}
-            {history.length > 0 && (
-              <div className="bg-white rounded-2xl shadow p-4">
-                <h3 className="font-bold text-gray-800 mb-3">📋 Últimas Entradas</h3>
-                <div className="space-y-2">
-                  {history.slice(0, 5).map((item, idx) => (
-                    <div key={idx} className="border-l-4 border-emerald-500 bg-emerald-50 p-3 rounded">
-                      <div className="font-bold text-sm">{item.supplier}</div>
-                      <div className="text-xs text-gray-600">
-                        {item.items?.length || 1} itens - R$ {(item.totalValue || item.items?.[0]?.totalCost || 0).toFixed(2)}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {new Date(item.timestamp).toLocaleString('pt-BR')}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        ) : (
-          // Preview da Nota Fiscal
-          <div className="space-y-4">
-            <div className="bg-white rounded-2xl shadow-lg p-4">
-              <h3 className="font-bold text-lg mb-4">✅ Confirmar Entrada</h3>
-
-              <div className="space-y-2 mb-4 bg-gray-50 p-3 rounded-lg">
-                <div>
-                  <div className="text-xs text-gray-500">Fornecedor</div>
-                  <div className="font-bold">{invoiceData.supplier}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500">Valor Total</div>
-                  <div className="font-bold text-emerald-600 text-xl">
-                    R$ {invoiceData.totalValue?.toFixed(2)}
-                  </div>
-                </div>
-              </div>
-
-              <h4 className="font-bold mb-2">Produtos ({invoiceData.items.length})</h4>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {invoiceData.items.map((item: any, idx: number) => (
-                  <div key={idx} className="bg-gray-50 p-3 rounded-lg border">
-                    <div className="font-bold text-sm">{item.name}</div>
-                    <div className="text-xs text-gray-600 mt-1">
-                      {item.quantity} {item.unit} × R$ {item.unitCost?.toFixed(2)} = 
-                      <span className="text-emerald-600 font-bold ml-1">
-                        R$ {item.totalCost?.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setInvoiceData(null)}
-                className="flex-1 bg-gray-500 text-white py-4 rounded-xl font-bold active:scale-95 transition"
-              >
-                <XCircle size={20} className="inline mr-2" />
-                Cancelar
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={processing}
-                className="flex-1 bg-emerald-600 text-white py-4 rounded-xl font-bold active:scale-95 transition disabled:bg-gray-300"
-              >
-                <CheckCircle size={20} className="inline mr-2" />
-                Confirmar
-              </button>
-            </div>
-          </div>
-        )}
-
-        {processing && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl p-6">
-              <Loader className="animate-spin h-12 w-12 text-emerald-600 mx-auto mb-3" />
-              <div className="font-bold text-center">Processando...</div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-export default MobileStockEntry;
-
-const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001';
-
-const MobileStockEntry: React.FC = () => {
-  const [showCamera, setShowCamera] = useState(false);
-  const [processing, setProcessing] = useState(false);
-  const [invoiceData, setInvoiceData] = useState<any>(null);
-  const [history, setHistory] = useState<any[]>([]);
-
-  const handleQRCodeScan = async (qrCodeData: string) => {
-    setShowCamera(false);
-    setProcessing(true);
-    
-    try {
-      console.log('🔍 Processando QR Code...');
-      const data = await nfceService.processQRCode(qrCodeData);
-      
-      if (!data.items || data.items.length === 0) {
-        alert('⚠️ Nenhum produto encontrado na nota fiscal!');
-        return;
-      }
-      
-      setInvoiceData(data);
-    } catch (error: any) {
-      console.error('❌ Erro:', error);
-      alert(`Erro: ${error.message}`);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!invoiceData) return;
-
-    setProcessing(true);
-    try {
-      const response = await fetch(`${API_URL}/api/stock-entries/bulk`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          supplier: invoiceData.supplier,
-          invoiceNumber: invoiceData.invoiceNumber,
-          date: invoiceData.date,
-          items: invoiceData.items,
-          source: 'nota_fiscal'
-        })
-      });
-
-      if (response.ok) {
-        setHistory([{ ...invoiceData, timestamp: new Date() }, ...history]);
-        setInvoiceData(null);
-        alert('✅ Entrada registrada com sucesso!');
-      } else {
-        throw new Error('Erro ao salvar');
-      }
-    } catch (error: any) {
-      alert(`Erro ao salvar: ${error.message}`);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  if (showCamera) {
-    return <CameraScanner onScan={handleQRCodeScan} onClose={() => setShowCamera(false)} />;
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-blue-50">
-      {/* Header */}
-      <div className="bg-emerald-600 text-white p-4 sticky top-0 z-10 shadow-lg">
-        <h1 className="text-xl font-black">📦 Entrada de Estoque</h1>
-        <p className="text-xs text-emerald-100 mt-1">PratoFit - Gestão Mobile</p>
-      </div>
-
-      <div className="p-4 pb-20">
-        {!invoiceData ? (
-          <>
-            {/* Botão QR Code */}
-            <div className="space-y-4 mb-6">
-              <button
-                onClick={() => setShowCamera(true)}
-                className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 text-white p-8 rounded-2xl shadow-lg active:scale-95 transition-transform"
-              >
-                <QrCode size={64} className="mx-auto mb-4" />
-                <div className="font-bold text-2xl mb-2">Escanear QR Code</div>
-                <div className="text-sm text-emerald-100">Aponte a câmera para o QR Code da nota fiscal</div>
-              </button>
-            </div>
-
-            {/* Histórico */}
-            {history.length > 0 && (
-              <div className="bg-white rounded-2xl shadow p-4">
-                <h3 className="font-bold text-gray-800 mb-3">📋 Últimas Entradas</h3>
-                <div className="space-y-2">
-                  {history.slice(0, 5).map((item, idx) => (
-                    <div key={idx} className="border-l-4 border-emerald-500 bg-emerald-50 p-3 rounded">
-                      <div className="font-bold text-sm">{item.supplier}</div>
-                      <div className="text-xs text-gray-600">
-                        {item.items?.length || 1} itens - R$ {(item.totalValue || item.items?.[0]?.totalCost || 0).toFixed(2)}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {new Date(item.timestamp).toLocaleString('pt-BR')}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        ) : showManualEntry ? (
-          // Formulário Manual
-          <div className="bg-white rounded-2xl shadow-lg p-6 space-y-4">
-            <h3 className="font-bold text-lg mb-4">✏️ Entrada Manual</h3>
-            
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2">Produto</label>
-              <input
-                type="text"
-                placeholder="Ex: Tomate"
-                value={manualProduct.name}
-                onChange={(e) => setManualProduct({...manualProduct, name: e.target.value})}
-                className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-emerald-500 outline-none"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">Quantidade</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="5"
-                  value={manualProduct.quantity}
-                  onChange={(e) => setManualProduct({...manualProduct, quantity: e.target.value})}
-                  className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-emerald-500 outline-none"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">Unidade</label>
-                <select
-                  value={manualProduct.unit}
-                  onChange={(e) => setManualProduct({...manualProduct, unit: e.target.value})}
-                  className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-emerald-500 outline-none"
-                >
-                  <option value="kg">kg</option>
-                  <option value="g">g</option>
-                  <option value="l">l</option>
-                  <option value="ml">ml</option>
-                  <option value="unidade">unidade</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2">Preço Unitário (R$)</label>
-              <input
-                type="number"
-                step="0.01"
-                placeholder="6.50"
-                value={manualProduct.unitCost}
-                onChange={(e) => setManualProduct({...manualProduct, unitCost: e.target.value})}
-            cessing && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl p-6">
-              <Loader className="animate-spin h-12 w-12 text-emerald-600 mx-auto mb-3" />
-              <div className="font-bold text-center">Processando...</div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// Componente de Câmera Simples
-const CameraScanner: React.FC<{ onScan: (data: string) => void; onClose: () => void }> = ({ onScan, onClose }) => {
-  const videoRef = React.useRef<HTMLVideoElement>(null);
-  const canvasRef = React.useRef<HTMLCanvasElement>(null);
-  const [error, setError] = React.useState('');
-  const [scanning, setScanning] = React.useState(false);
-
-  React.useEffect(() => {
-    let stream: MediaStream | null = null;
-    let interval: NodeJS.Timeout;
-
-    const startCamera = async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' }
-        });
-        
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-          setScanning(true);
-          
-          // Escaneia a cada 500ms
-          interval = setInterval(async () => {
-            if (videoRef.current && canvasRef.current) {
-              const canvas = canvasRef.current;
-              const video = videoRef.current;
-              
-              canvas.width = video.videoWidth;
-              canvas.height = video.videoHeight;
-              
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                ctx.drawImage(video, 0, 0);
-                
-                // Tenta detectar QR Code
-                if ('BarcodeDetector' in window) {
-                  try {
-                    const detector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
-                    const barcodes = await detector.detect(canvas);
-                    
-                    if (barcodes.length > 0) {
-                      clearInterval(interval);
-                      stream?.getTracks().forEach(t => t.stop());
-                      onScan(barcodes[0].rawValue);
-                    }
-                  } catch (err) {
-                    console.error('Erro ao escanear:', err);
-                  }
-                }
-              }
-            }
-          }, 500);
-        }
-      } catch (err) {
-        console.error('Erro ao acessar câmera:', err);
-        setError('Erro ao acessar câmera. Permita o acesso nas configurações.');
-      }
-    };
-
-    startCamera();
-
-    return () => {
-      clearInterval(interval);
-      stream?.getTracks().forEach(t => t.stop());
-    };
-  }, [onScan]);
-
-  return (
-    <div className="fixed inset-0 bg-black z-50 flex flex-col">
-      <div className="bg-emerald-600 text-white p-4 flex items-center justify-between">
-        <h2 className="font-bold text-lg">📷 Escanear QR Code</h2>
-        <button onClick={onClose} className="p-2 hover:bg-emerald-700 rounded-lg">
-          <XCircle size={24} />
-        </button>
-      </div>
-
-      <div className="flex-1 relative">
-        {error ? (
-          <div className="h-full flex items-center justify-center text-white p-6 text-center">
-            <div>
-              <div className="text-6xl mb-4">⚠️</div>
-              <div>{error}</div>
-            </div>
-          </div>
-        ) : (
-          <>
-            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-            {scanning && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-64 h-64 border-4 border-emerald-500 rounded-2xl animate-pulse">
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-white bg-black bg-opacity-70 px-4 py-2 rounded-lg text-center">
-                      <div className="font-bold">Aponte para o QR Code</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-        <canvas ref={canvasRef} className="hidden" />
       </div>
     </div>
   );
