@@ -11,7 +11,119 @@ const MobileStockEntry: React.FC = () => {
   const [processing, setProcessing] = useState(false);
   const [invoiceData, setInvoiceData] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
+  const [extractedKey, setExtractedKey] = useState(''); // Código extraído da foto
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const invoiceScreenshotRef = useRef<HTMLInputElement>(null);
+
+  const extractInvoiceDataFromScreenshot = async (base64Image: string): Promise<any> => {
+    try {
+      console.log('🤖 Extraindo dados da nota fiscal com Gemini AI...');
+      
+      const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+      const prompt = `
+Você é um OCR especializado em extrair dados de NOTAS FISCAIS ELETRÔNICAS (NFC-e) brasileiras.
+
+📋 TAREFA: Extrair TODOS os produtos desta nota fiscal.
+
+Para CADA PRODUTO, extraia:
+- Nome/Descrição
+- Quantidade
+- Unidade (UN, KG, L, etc)
+- Valor Unitário
+- Valor Total
+
+📝 FORMATO DE SAÍDA (JSON):
+{
+  "supplier": "Nome do fornecedor/loja",
+  "cnpj": "CNPJ se visível",
+  "invoiceNumber": "Número da nota",
+  "totalValue": 59.95,
+  "items": [
+    {
+      "name": "ARROZ BRANCO 1KG",
+      "quantity": 2,
+      "unit": "UN",
+      "unitCost": 5.50,
+      "totalCost": 11.00
+    }
+  ]
+}
+
+⚠️ IMPORTANTE:
+- Retorne APENAS o JSON, sem explicações
+- Se não conseguir ler, retorne: {"error": "Não foi possível ler"}
+- Normalize os nomes (remova códigos, deixe limpo)
+- Unidade: UN, KG, G, L, ML, PCT, CX
+
+ANALISE A IMAGEM:
+`;
+
+      const imagePart = {
+        inlineData: {
+          data: base64Image.split(',')[1],
+          mimeType: 'image/jpeg'
+        }
+      };
+
+      const result = await model.generateContent([prompt, imagePart]);
+      const response = result.response;
+      const text = response.text().trim();
+      
+      console.log('🤖 Resposta do Gemini:', text);
+
+      // Remove markdown code blocks se tiver
+      let jsonText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      
+      const data = JSON.parse(jsonText);
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      
+      console.log('✅ Dados extraídos:', data);
+      return data;
+      
+    } catch (error) {
+      console.error('❌ Erro ao extrair dados:', error);
+      throw error;
+    }
+  };
+
+  const handleInvoiceScreenshot = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setProcessing(true);
+    
+    try {
+      console.log('📸 Processando print da nota fiscal...');
+      
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const base64Image = event.target?.result as string;
+        
+        // Extrai dados com Gemini AI
+        const data = await extractInvoiceDataFromScreenshot(base64Image);
+        
+        if (!data.items || data.items.length === 0) {
+          alert('⚠️ Nenhum produto encontrado!\n\nDicas:\n• Tire print da parte com os PRODUTOS\n• Certifique que os textos estão legíveis\n• Zoom na lista de produtos');
+          setProcessing(false);
+          return;
+        }
+
+        setInvoiceData(data);
+        setProcessing(false);
+      };
+      
+      reader.readAsDataURL(file);
+    } catch (error: any) {
+      console.error('❌ Erro:', error);
+      alert(`Erro ao processar print: ${error.message}`);
+      setProcessing(false);
+    }
+  };
 
   const extractAccessKeyFromImage = async (base64Image: string): Promise<string | null> => {
     try {
@@ -121,20 +233,19 @@ ANALISE A IMAGEM:
     setProcessing(true);
     
     try {
-      console.log('📷 Processando foto da nota fiscal...');
+      console.log('📷 Processando foto do cupom físico para EXTRAIR CÓDIGO...');
       
       const reader = new FileReader();
       reader.onload = async (event) => {
         const base64Image = event.target?.result as string;
         
-        // Extrai chave de acesso com Gemini AI
+        // Extrai APENAS a chave de acesso (não busca na SEFAZ)
         const key = await extractAccessKeyFromImage(base64Image);
         
         if (!key) {
-          const tryManual = confirm('❌ Não consegui ler automaticamente.\n\n✅ Quer digitar a chave manualmente?\n\nProcure no rodapé da nota: 44 números (ex: 2526 0112 9197...)');
+          const tryManual = confirm('❌ Não consegui ler o código automaticamente.\n\n✅ Quer digitar os 44 números manualmente?');
           
           if (tryManual) {
-            // Apenas para de processar, usuário vai digitar manualmente
             setProcessing(false);
             return;
           }
@@ -144,11 +255,12 @@ ANALISE A IMAGEM:
           return;
         }
 
-        // Atualiza o campo
+        // APENAS exibe o código extraído (não busca na SEFAZ)
+        setExtractedKey(key);
         setAccessKey(key);
+        setProcessing(false);
         
-        // Processa automaticamente
-        await processAccessKey(key);
+        alert(`✅ Código extraído com sucesso!\n\n${key}\n\nAgora:\n1. Copie o código abaixo\n2. Clique em "Abrir na SEFAZ"\n3. Cole o código e clique em "Consultar"\n4. Tire print da tela\n5. Faça upload do print`);
       };
       
       reader.readAsDataURL(file);
@@ -242,8 +354,9 @@ ANALISE A IMAGEM:
       return;
     }
 
-    setProcessing(true);
-    await processAccessKey(cleanKey);
+    // Apenas exibe o código para o usuário copiar e ir na SEFAZ
+    setExtractedKey(cleanKey);
+    alert(`✅ Código válido!\n\n${cleanKey}\n\nAgora:\n1. Copie o código\n2. Clique em "Abrir na SEFAZ"\n3. Cole e consulte\n4. Tire print da tela\n5. Faça upload do print acima`);
   };
 
   const handleSave = async () => {
@@ -289,47 +402,104 @@ ANALISE A IMAGEM:
       <div className="p-4 pb-20">
         {!invoiceData ? (
           <>
-            {/* Dicas de Como Fotografar */}
-            <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 mb-4">
-              <h3 className="font-bold text-blue-900 mb-2">💡 Como tirar a foto:</h3>
-              <ul className="text-sm text-blue-800 space-y-1">
-                <li>📸 Tire foto do <strong>RODAPÉ</strong> do cupom</li>
-                <li>🔲 Capture o <strong>QR Code</strong></li>
-                <li>🔢 Inclua os <strong>44 números</strong> abaixo do QR Code</li>
-                <li>💡 Boa iluminação, sem sombra</li>
-                <li>📏 Números legíveis e nítidos</li>
-              </ul>
-              <div className="mt-3 p-2 bg-white rounded text-xs text-gray-600 border border-blue-200">
-                <div className="font-mono text-center">
-                  ⬛⬜⬛⬜ ← QR Code<br/>
-                  www.sefaz...consulta<br/>
-                  <strong className="text-blue-600">2524 1234 5678 9012 3456...</strong> ← 44 números
+            {/* PASSO 1: Extrair Código da Nota Física */}
+            <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl shadow-lg p-6 mb-4">
+              <h2 className="text-white font-bold text-lg mb-3">📸 PASSO 1: Extrair Código</h2>
+              <p className="text-white text-sm mb-4">Foto do cupom físico → IA extrai o código de 44 dígitos</p>
+              
+              <label className="block">
+                <div className="bg-white text-orange-600 p-6 rounded-xl shadow active:scale-95 transition cursor-pointer text-center">
+                  <Camera size={48} className="mx-auto mb-3" />
+                  <div className="font-bold text-xl mb-2">Tirar Foto do Cupom</div>
+                  <div className="text-sm text-gray-600">
+                    Tire foto do RODAPÉ (QR Code + números)
+                  </div>
                 </div>
-              </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                  disabled={processing}
+                />
+              </label>
             </div>
 
-            {/* Botão Tirar Foto */}
-            <label className="block mb-4">
-              <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white p-8 rounded-2xl shadow-lg active:scale-95 transition cursor-pointer text-center">
-                <Camera size={64} className="mx-auto mb-4" />
-                <div className="font-bold text-2xl mb-2">Tirar Foto da Nota</div>
-                <div className="text-sm text-emerald-100">A IA vai ler a chave automaticamente</div>
+            {/* Exibir código extraído */}
+            {extractedKey && (
+              <div className="bg-green-50 border-2 border-green-500 rounded-xl p-4 mb-4">
+                <h3 className="font-bold text-green-900 mb-2">✅ Código Extraído:</h3>
+                <div className="bg-white p-3 rounded border border-green-300 mb-3">
+                  <div className="font-mono text-sm break-all">{extractedKey}</div>
+                </div>
+                
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(extractedKey);
+                    alert('✅ Código copiado!');
+                  }}
+                  className="w-full bg-blue-500 text-white py-2 rounded-lg mb-2 font-bold"
+                >
+                  📋 Copiar Código
+                </button>
+                
+                <a
+                  href={`https://www.sefaz.pb.gov.br/nfce/qrcode?p=${extractedKey}|2|1|1|`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-full bg-green-500 text-white py-2 rounded-lg text-center font-bold"
+                >
+                  🌐 Abrir na SEFAZ
+                </a>
+                
+                <div className="mt-3 p-3 bg-yellow-50 border border-yellow-300 rounded text-sm">
+                  <strong>⚠️ Próximos passos:</strong>
+                  <ol className="list-decimal ml-4 mt-2 space-y-1">
+                    <li>Clique em "Abrir na SEFAZ"</li>
+                    <li>Cole o código e clique "Consultar"</li>
+                    <li>Aguarde a nota carregar</li>
+                    <li>Tire PRINT da tela completa</li>
+                    <li>Volte aqui e faça upload do print ⬇️</li>
+                  </ol>
+                </div>
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handlePhotoUpload}
-                className="hidden"
-              />
-            </label>
+            )}
+
+            <div className="text-center text-gray-500 text-sm my-4 font-bold">OU</div>
+
+            {/* PASSO 2: Upload do Print da SEFAZ */}
+            <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl shadow-lg p-6 mb-4">
+              <h2 className="text-white font-bold text-lg mb-3">📱 PASSO 2: Print da Nota Digital</h2>
+              <p className="text-white text-sm mb-4">Já consultou na SEFAZ? Envie o print!</p>
+              
+              <label className="block">
+                <div className="bg-white text-blue-600 p-6 rounded-xl shadow active:scale-95 transition cursor-pointer text-center">
+                  <Camera size={48} className="mx-auto mb-3" />
+                  <div className="font-bold text-xl mb-2">Upload Print da SEFAZ</div>
+                  <div className="text-sm text-gray-600">
+                    Print da tela com os produtos → IA cadastra tudo
+                  </div>
+                </div>
+                <input
+                  ref={invoiceScreenshotRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleInvoiceScreenshot}
+                  className="hidden"
+                  disabled={processing}
+                />
+              </label>
+            </div>
+
+            <div className="text-center text-gray-500 text-sm my-4">ou digite manualmente</div>
 
             {/* Opção Manual */}
             <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
               <div className="text-center mb-4">
                 <Key size={48} className="mx-auto text-blue-600 mb-2" />
-                <h3 className="font-bold text-gray-800">Ou digite manualmente</h3>
+                <h3 className="font-bold text-gray-800">Digite o código manualmente</h3>
               </div>
 
               <div className="space-y-3">
@@ -351,7 +521,7 @@ ANALISE A IMAGEM:
                   disabled={processing || accessKey.length !== 44}
                   className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold active:scale-95 transition disabled:bg-gray-300"
                 >
-                  Buscar Nota
+                  ✅ Validar Código
                 </button>
               </div>
             </div>
