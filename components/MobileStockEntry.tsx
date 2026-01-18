@@ -133,52 +133,31 @@ ANALISE A IMAGEM:
       const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
       const prompt = `
-Você é um OCR especializado em ler CUPONS FISCAIS NFC-e da SEFAZ BRASILEIRA.
+Você é um OCR especializado. Sua ÚNICA tarefa é encontrar e retornar uma sequência de 44 NÚMEROS.
 
-🎯 OBJETIVO: Extrair a CHAVE DE ACESSO de 44 dígitos.
+🔍 O QUE PROCURAR:
+Na imagem, há uma sequência de 44 dígitos numéricos que geralmente está:
+- Perto de um texto como "www.sefaz.pb.gov.br" ou similar
+- ABAIXO de uma URL
+- Pode estar dividida em grupos (exemplo: 2526 0112 9197 3400 0310 6311 3000 4299 7516 3182 9541)
+- Pode estar em 1, 2 ou 3 linhas
 
-📍 ONDE ESTÁ A CHAVE:
-A chave fica NO RODAPÉ do cupom, logo ACIMA do QR Code ou ABAIXO da frase:
-- "Consulte pela chave de acesso em"
-- "www.sefaz.pb.gov.br/nfce/consulta" (ou outro estado)
+⚠️ NÃO PROCURE:
+- QR Code
+- Código de barras
+- CNPJ (só tem 14 números)
+- Valores em dinheiro (tem vírgula/R$)
+- Data (tem barras)
 
-📝 FORMATO EXATO DA CHAVE:
-- Sempre 44 NÚMEROS (pode ter espaços entre eles)
-- Aparece em 1, 2 ou 3 linhas
-- Números agrupados de 4 em 4 dígitos
+✅ RESPOSTA:
+- Se encontrar 44 números: retorne APENAS os 44 dígitos sem espaços (exemplo: 25260112919734000310631130004299751631829541)
+- Se NÃO encontrar: retorne apenas "NAO_ENCONTRADA"
+- NÃO adicione explicações, APENAS os números OU "NAO_ENCONTRADA"
 
-EXEMPLO REAL (como aparece no cupom):
-"""
-www.sefaz.pb.gov.br/nfce/consulta
-2526 0112 9197 3400 0310 6311 3000 4299 7516 3182 9541
-"""
-
-OUTRO EXEMPLO:
-"""
-Consulte pela chave de acesso em
-2524 1234 5678 9012 3456
-7890 1234 5678 9012 3456
-7890 1234
-"""
-
-🔍 INSTRUÇÕES:
-1. Procure no RODAPÉ (parte inferior) da nota
-2. Encontre a URL "www.sefaz..." ou texto "Consulte pela chave"
-3. A chave está logo ABAIXO ou ACIMA desse texto
-4. Conte os números - deve ter EXATAMENTE 44 dígitos
-5. Ignore espaços e junte todos os números
-
-❌ NÃO CONFUNDA COM:
-- CNPJ (só 14 dígitos) - exemplo: 12.345.678/0001-90
-- Número da nota (só 6-9 dígitos)
-- Data (tem barras /)
-- Valor (tem vírgula ou R$)
-- Protocolo de autorização (tem letras)
-
-✅ RETORNE:
-- Se encontrar: os 44 dígitos SEM ESPAÇOS (exemplo: 25260112919734000310631130004299751631829541)
-- Se NÃO encontrar: apenas a palavra "NAO_ENCONTRADA"
-- NÃO adicione explicações, APENAS os 44 números OU "NAO_ENCONTRADA"
+🎯 DICA: Os 44 números geralmente aparecem logo após ou perto de texto como:
+- "Consulte pela chave de acesso"
+- "www.sefaz..."
+- São os ÚNICOS 44 números seguidos na nota
 
 ANALISE A IMAGEM:
 `;
