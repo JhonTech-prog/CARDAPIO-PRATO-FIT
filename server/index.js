@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import axios from 'axios';
 import { ifoodService } from './ifoodService.js';
 import { Ingredient, Recipe, StockMovement } from './ingredientModels.js';
 import { ingredientService } from './ingredientService.js';
@@ -583,6 +584,95 @@ app.get('/api/stock-movements', async (req, res) => {
   } catch (error) {
     console.error('Erro ao buscar histórico:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST - Proxy para buscar NFC-e da SEFAZ (evita CORS)
+app.post('/api/nfce/fetch', async (req, res) => {
+  try {
+    const { accessKey, state } = req.body;
+    
+    if (!accessKey || accessKey.length !== 44) {
+      return res.status(400).json({ success: false, error: 'Chave de acesso inválida' });
+    }
+
+    console.log(`🔍 Buscando NFC-e: ${accessKey}`);
+    
+    // Detecta o estado pela chave de acesso (posições 0-1)
+    const stateCode = accessKey.substring(0, 2);
+    
+    // Mapa de URLs por estado
+    const sefazUrls = {
+      '25': 'https://www.sefaz.pb.gov.br/nfce/qrcode',
+      '26': 'https://www.sefaz.pe.gov.br/nfce/consulta',
+      '35': 'https://www.fazenda.sp.gov.br/nfce/consulta',
+      '53': 'https://www.nfce.fazenda.df.gov.br/consulta',
+      '33': 'https://www.nfce.fazenda.rj.gov.br/consulta',
+      '41': 'https://www.fazenda.pr.gov.br/nfce/consulta',
+      '43': 'https://www.sefaz.rs.gov.br/nfce/consulta',
+      '31': 'https://www.fazenda.mg.gov.br/nfce/consulta',
+      '29': 'https://www.sefaz.ba.gov.br/nfce/consulta',
+      '23': 'https://www.sefaz.ce.gov.br/nfce/consulta'
+    };
+    
+    const baseUrl = sefazUrls[stateCode] || state || sefazUrls['25'];
+    
+    // Tenta diferentes formatos de URL
+    const urlFormats = [
+      `${baseUrl}?p=${accessKey}|2|1|1|`,
+      `${baseUrl}?p=${accessKey}`,
+      `${baseUrl}?chNFe=${accessKey}`,
+      `https://www.sefaz.pb.gov.br/nfce/qrcode?p=${accessKey}|2|1|1|`
+    ];
+    
+    let response = null;
+    let successUrl = null;
+    
+    // Tenta cada formato até conseguir
+    for (const url of urlFormats) {
+      try {
+        console.log(`🔗 Tentando: ${url}`);
+        response = await axios.get(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Cache-Control': 'no-cache'
+          },
+          timeout: 15000,
+          maxRedirects: 5
+        });
+        
+        if (response.data && response.data.length > 100) {
+          successUrl = url;
+          console.log(`✅ Sucesso com: ${url}`);
+          break;
+        }
+      } catch (err) {
+        console.log(`❌ Falhou: ${url}`);
+        continue;
+      }
+    }
+    
+    if (!response || !response.data) {
+      throw new Error('Não foi possível acessar a nota fiscal. Verifique se a chave está correta.');
+    }
+
+    // Retorna o HTML para o frontend processar
+    res.json({ 
+      success: true, 
+      html: response.data, 
+      url: successUrl,
+      stateCode 
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao buscar NFC-e:', error.message);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro ao buscar nota fiscal. Verifique a chave de acesso e tente novamente.',
+      details: error.message 
+    });
   }
 });
 

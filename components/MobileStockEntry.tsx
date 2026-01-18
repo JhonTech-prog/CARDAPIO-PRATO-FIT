@@ -21,23 +21,34 @@ const MobileStockEntry: React.FC = () => {
       const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
       const prompt = `
-Você é um OCR especializado em ler notas fiscais brasileiras (NFC-e).
+Você é um OCR especializado em cupons fiscais brasileiros (NFC-e/NF-e).
 
-TAREFA: Extraia APENAS a CHAVE DE ACESSO (44 dígitos numéricos) desta nota fiscal.
+TAREFA CRÍTICA: Extraia APENAS a CHAVE DE ACESSO da nota fiscal.
 
-A chave de acesso fica geralmente:
-- Abaixo do QR Code
-- No rodapé da nota
-- Identificada como "Chave de Acesso" ou apenas uma sequência de 44 números
+A chave de acesso tem SEMPRE 44 DÍGITOS NUMÉRICOS e geralmente está:
+- No rodapé da nota, abaixo do QR Code
+- Escrita em uma ou duas linhas
+- Pode ter espaços entre os números
+- Identificada como "Chave de Acesso" ou simplesmente uma sequência longa de números
 
-IMPORTANTE:
-- Retorne APENAS os 44 dígitos, sem espaços, hífens ou formatação
-- Se não encontrar, retorne "CHAVE_NAO_ENCONTRADA"
-- Não retorne nenhum texto adicional, apenas os números
+FORMATO: 
+- 44 dígitos numéricos (exemplo: 25241112345678901234550010000123451234567890)
+- Pode estar dividida em grupos de 4 dígitos
+- Pode ter espaços ou não
 
-Exemplo de formato correto: 25241112345678901234550010000123451234567890
+INSTRUÇÕES:
+1. Procure por uma sequência de 44 dígitos
+2. Se tiver espaços, remova-os
+3. Retorne APENAS os 44 números, sem formatação
+4. Se não encontrar 44 dígitos, retorne "CHAVE_NAO_ENCONTRADA"
+5. NÃO retorne texto explicativo, APENAS os números ou CHAVE_NAO_ENCONTRADA
 
-Agora analise a imagem e retorne a chave de acesso:
+ATENÇÃO: 
+- NÃO confunda com CNPJ (14 dígitos)
+- NÃO confunda com número da nota (menor)
+- NÃO confunda com código de barras
+
+Agora analise a imagem e retorne APENAS a chave de 44 dígitos:
 `;
 
       const imagePart = {
@@ -51,23 +62,34 @@ Agora analise a imagem e retorne a chave de acesso:
       const response = result.response;
       const text = response.text().trim();
       
-      console.log('🤖 Resposta do Gemini:', text);
+      console.log('🤖 Resposta bruta do Gemini:', text);
 
       // Extrai apenas números
       const cleanKey = text.replace(/\D/g, '');
       
+      console.log('🔢 Números extraídos:', cleanKey, '(', cleanKey.length, 'dígitos)');
+      
       if (cleanKey.length === 44) {
-        console.log('✅ Chave extraída com sucesso:', cleanKey);
+        console.log('✅ Chave válida extraída:', cleanKey);
         return cleanKey;
-      } else if (text.includes('CHAVE_NAO_ENCONTRADA')) {
-        console.log('❌ Chave não encontrada na imagem');
+      } else if (text.includes('CHAVE_NAO_ENCONTRADA') || text.includes('NAO_ENCONTRADA')) {
+        console.log('❌ IA não encontrou a chave na imagem');
+        return null;
+      } else if (cleanKey.length > 0) {
+        console.log('⚠️ Chave inválida - tem', cleanKey.length, 'dígitos, precisa de 44');
+        // Tenta pegar os primeiros ou últimos 44 dígitos se tiver mais
+        if (cleanKey.length > 44) {
+          const key44 = cleanKey.substring(0, 44);
+          console.log('🔧 Tentando usar primeiros 44 dígitos:', key44);
+          return key44;
+        }
         return null;
       } else {
-        console.log('⚠️ Chave inválida (não tem 44 dígitos):', cleanKey);
+        console.log('❌ Nenhum número encontrado');
         return null;
       }
     } catch (error) {
-      console.error('❌ Erro ao extrair chave:', error);
+      console.error('❌ Erro ao extrair chave com Gemini:', error);
       return null;
     }
   };
@@ -111,24 +133,75 @@ Agora analise a imagem e retorne a chave de acesso:
 
   const processAccessKey = async (key: string) => {
     try {
-      console.log('🔍 Buscando nota fiscal na SEFAZ...');
+      console.log('🔍 Buscando nota fiscal via proxy backend...');
+      console.log('🔑 Chave:', key);
       
-      // Monta URL da SEFAZ
-      const nfceUrl = `https://www.sefaz.pb.gov.br/nfce/qrcode?p=${key}|2|1|1|`;
+      // URL do backend (usa variável de ambiente ou fallback para Render)
+      const backendUrl = API_URL || 'https://cardapio-prato-fit.onrender.com';
+      const apiEndpoint = `${backendUrl}/api/nfce/fetch`;
       
-      const data = await nfceService.processQRCode(nfceUrl);
+      console.log('🌐 Endpoint:', apiEndpoint);
+      
+      // Chama o proxy do backend para evitar CORS
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ accessKey: key })
+      });
+
+      const result = await response.json();
+      
+      console.log('📦 Resposta do backend:', { 
+        success: result.success, 
+        hasHtml: !!result.html, 
+        htmlLength: result.html?.length,
+        url: result.url,
+        error: result.error 
+      });
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Erro ao buscar nota fiscal');
+      }
+
+      if (!result.html || result.html.length < 100) {
+        throw new Error('Resposta da SEFAZ está vazia ou incompleta');
+      }
+
+      console.log('✅ HTML recebido do backend, processando...');
+      console.log('📄 Tamanho do HTML:', result.html.length, 'caracteres');
+      
+      // Processa o HTML usando o nfceService
+      const data = await nfceService.processHTML(result.html);
+      
+      console.log('✅ Dados extraídos:', data);
       
       if (!data.items || data.items.length === 0) {
-        alert('⚠️ Nenhum produto encontrado na nota fiscal!');
+        alert('⚠️ Nenhum produto encontrado na nota fiscal!\n\nTente tirar outra foto ou digitar a chave manualmente.');
         setProcessing(false);
         return;
       }
       
+      console.log('✅ Dados processados com sucesso:', data.items.length, 'itens');
       setInvoiceData(data);
       setProcessing(false);
     } catch (error: any) {
-      console.error('❌ Erro:', error);
-      alert(`Erro ao buscar nota: ${error.message}`);
+      console.error('❌ Erro completo:', error);
+      
+      let errorMessage = 'Erro desconhecido';
+      
+      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+        errorMessage = '🌐 Servidor offline. Verifique sua conexão ou tente novamente em alguns minutos.';
+      } else if (error.message.includes('Nenhum produto')) {
+        errorMessage = '📦 A nota foi encontrada, mas não conseguimos extrair os produtos.\n\nTente:\n• Tirar outra foto mais nítida\n• Digitar a chave manualmente';
+      } else if (error.message.includes('buscar nota fiscal')) {
+        errorMessage = '🔍 Não foi possível acessar a SEFAZ.\n\nVerifique:\n• Se a chave está correta (44 dígitos)\n• Se a nota foi emitida recentemente\n• Se o site da SEFAZ está disponível';
+      } else {
+        errorMessage = `❌ ${error.message}`;
+      }
+      
+      alert(errorMessage);
       setProcessing(false);
     }
   };
