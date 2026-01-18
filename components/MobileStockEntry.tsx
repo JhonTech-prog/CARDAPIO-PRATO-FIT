@@ -21,50 +21,54 @@ const MobileStockEntry: React.FC = () => {
       const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
       const prompt = `
-Você é um OCR especializado em ler CUPONS FISCAIS BRASILEIROS (NFC-e).
+Você é um OCR especializado em ler CUPONS FISCAIS NFC-e da SEFAZ BRASILEIRA.
 
-📋 DESCRIÇÃO VISUAL DA NOTA FISCAL:
-Uma NFC-e (cupom fiscal) tem no RODAPÉ:
-1. Um QR CODE (quadrado preto e branco)
-2. Abaixo do QR Code tem um texto tipo:
-   "Consulta via leitor de QR Code"
-   ou
-   "www.sefaz.pb.gov.br/nfce/consulta"
-   
-3. Logo ABAIXO dessa URL, tem a CHAVE DE ACESSO:
-   - São 44 NÚMEROS agrupados de 4 em 4
-   - Formato visual: "1234 5678 9012 3456 7890 1234 5678 9012 3456 7890 1234"
-   - Pode estar em 1, 2 ou 3 linhas
-   - Pode ter ou não espaços entre os grupos
+🎯 OBJETIVO: Extrair a CHAVE DE ACESSO de 44 dígitos.
 
-📝 EXEMPLO REAL de como aparece:
-```
+📍 ONDE ESTÁ A CHAVE:
+A chave fica NO RODAPÉ do cupom, logo ACIMA do QR Code ou ABAIXO da frase:
+- "Consulte pela chave de acesso em"
+- "www.sefaz.pb.gov.br/nfce/consulta" (ou outro estado)
+
+📝 FORMATO EXATO DA CHAVE:
+- Sempre 44 NÚMEROS (pode ter espaços entre eles)
+- Aparece em 1, 2 ou 3 linhas
+- Números agrupados de 4 em 4 dígitos
+
+EXEMPLO REAL (como aparece no cupom):
+"""
+www.sefaz.pb.gov.br/nfce/consulta
+2526 0112 9197 3400 0310 6311 3000 4299 7516 3182 9541
+"""
+
+OUTRO EXEMPLO:
+"""
 Consulte pela chave de acesso em
-www.sefaz.pb.gov.br/nfce/qrcode
+2524 1234 5678 9012 3456
+7890 1234 5678 9012 3456
+7890 1234
+"""
 
-2524 1234 5678 9012 3456 7890
-1234 5678 9012 3456 7890 1234
-```
+🔍 INSTRUÇÕES:
+1. Procure no RODAPÉ (parte inferior) da nota
+2. Encontre a URL "www.sefaz..." ou texto "Consulte pela chave"
+3. A chave está logo ABAIXO ou ACIMA desse texto
+4. Conte os números - deve ter EXATAMENTE 44 dígitos
+5. Ignore espaços e junte todos os números
 
-🎯 SUA TAREFA:
-1. Procure no RODAPÉ da nota (parte de baixo)
-2. Encontre o QR Code
-3. ABAIXO do QR Code, procure uma sequência de números
-4. Conte se tem 44 dígitos (ignore espaços)
-5. Retorne APENAS os 44 números SEM espaços
+❌ NÃO CONFUNDA COM:
+- CNPJ (só 14 dígitos) - exemplo: 12.345.678/0001-90
+- Número da nota (só 6-9 dígitos)
+- Data (tem barras /)
+- Valor (tem vírgula ou R$)
+- Protocolo de autorização (tem letras)
 
-⚠️ NÃO CONFUNDA COM:
-- CNPJ (tem 14 dígitos)
-- Número da nota (menor que 10 dígitos)
-- Código de barras (diferente)
-- Valor total (tem vírgula/pontos)
+✅ RETORNE:
+- Se encontrar: os 44 dígitos SEM ESPAÇOS (exemplo: 25260112919734000310631130004299751631829541)
+- Se NÃO encontrar: apenas a palavra "NAO_ENCONTRADA"
+- NÃO adicione explicações, APENAS os 44 números OU "NAO_ENCONTRADA"
 
-✅ FORMATO DA RESPOSTA:
-- Se encontrar: retorne os 44 números sem espaço (exemplo: 25241234567890123456789012345678901234567890)
-- Se NÃO encontrar: retorne apenas "NAO_ENCONTRADA"
-- NÃO retorne texto explicativo, APENAS os números OU "NAO_ENCONTRADA"
-
-ANALISE A IMAGEM AGORA:
+ANALISE A IMAGEM:
 `;
 
       const imagePart = {
@@ -127,7 +131,15 @@ ANALISE A IMAGEM AGORA:
         const key = await extractAccessKeyFromImage(base64Image);
         
         if (!key) {
-          alert('❌ Não foi possível ler a chave de acesso da foto.\n\nDicas:\n• Tire foto da parte inferior da nota\n• Certifique-se que os números estão visíveis\n• Evite reflexo e sombra');
+          const tryManual = confirm('❌ Não consegui ler automaticamente.\n\n✅ Quer digitar a chave manualmente?\n\nProcure no rodapé da nota: 44 números (ex: 2526 0112 9197...)');
+          
+          if (tryManual) {
+            // Apenas para de processar, usuário vai digitar manualmente
+            setProcessing(false);
+            return;
+          }
+          
+          alert('💡 Dica: Tire foto da parte INFERIOR da nota fiscal, incluindo:\n• O QR Code\n• A URL (www.sefaz...)\n• Os 44 números abaixo');
           setProcessing(false);
           return;
         }
