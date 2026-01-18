@@ -21,34 +21,50 @@ const MobileStockEntry: React.FC = () => {
       const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
       const prompt = `
-Você é um OCR especializado em cupons fiscais brasileiros (NFC-e/NF-e).
+Você é um OCR especializado em ler CUPONS FISCAIS BRASILEIROS (NFC-e).
 
-TAREFA CRÍTICA: Extraia APENAS a CHAVE DE ACESSO da nota fiscal.
+📋 DESCRIÇÃO VISUAL DA NOTA FISCAL:
+Uma NFC-e (cupom fiscal) tem no RODAPÉ:
+1. Um QR CODE (quadrado preto e branco)
+2. Abaixo do QR Code tem um texto tipo:
+   "Consulta via leitor de QR Code"
+   ou
+   "www.sefaz.pb.gov.br/nfce/consulta"
+   
+3. Logo ABAIXO dessa URL, tem a CHAVE DE ACESSO:
+   - São 44 NÚMEROS agrupados de 4 em 4
+   - Formato visual: "1234 5678 9012 3456 7890 1234 5678 9012 3456 7890 1234"
+   - Pode estar em 1, 2 ou 3 linhas
+   - Pode ter ou não espaços entre os grupos
 
-A chave de acesso tem SEMPRE 44 DÍGITOS NUMÉRICOS e geralmente está:
-- No rodapé da nota, abaixo do QR Code
-- Escrita em uma ou duas linhas
-- Pode ter espaços entre os números
-- Identificada como "Chave de Acesso" ou simplesmente uma sequência longa de números
+📝 EXEMPLO REAL de como aparece:
+```
+Consulte pela chave de acesso em
+www.sefaz.pb.gov.br/nfce/qrcode
 
-FORMATO: 
-- 44 dígitos numéricos (exemplo: 25241112345678901234550010000123451234567890)
-- Pode estar dividida em grupos de 4 dígitos
-- Pode ter espaços ou não
+2524 1234 5678 9012 3456 7890
+1234 5678 9012 3456 7890 1234
+```
 
-INSTRUÇÕES:
-1. Procure por uma sequência de 44 dígitos
-2. Se tiver espaços, remova-os
-3. Retorne APENAS os 44 números, sem formatação
-4. Se não encontrar 44 dígitos, retorne "CHAVE_NAO_ENCONTRADA"
-5. NÃO retorne texto explicativo, APENAS os números ou CHAVE_NAO_ENCONTRADA
+🎯 SUA TAREFA:
+1. Procure no RODAPÉ da nota (parte de baixo)
+2. Encontre o QR Code
+3. ABAIXO do QR Code, procure uma sequência de números
+4. Conte se tem 44 dígitos (ignore espaços)
+5. Retorne APENAS os 44 números SEM espaços
 
-ATENÇÃO: 
-- NÃO confunda com CNPJ (14 dígitos)
-- NÃO confunda com número da nota (menor)
-- NÃO confunda com código de barras
+⚠️ NÃO CONFUNDA COM:
+- CNPJ (tem 14 dígitos)
+- Número da nota (menor que 10 dígitos)
+- Código de barras (diferente)
+- Valor total (tem vírgula/pontos)
 
-Agora analise a imagem e retorne APENAS a chave de 44 dígitos:
+✅ FORMATO DA RESPOSTA:
+- Se encontrar: retorne os 44 números sem espaço (exemplo: 25241234567890123456789012345678901234567890)
+- Se NÃO encontrar: retorne apenas "NAO_ENCONTRADA"
+- NÃO retorne texto explicativo, APENAS os números OU "NAO_ENCONTRADA"
+
+ANALISE A IMAGEM AGORA:
 `;
 
       const imagePart = {
@@ -72,7 +88,7 @@ Agora analise a imagem e retorne APENAS a chave de 44 dígitos:
       if (cleanKey.length === 44) {
         console.log('✅ Chave válida extraída:', cleanKey);
         return cleanKey;
-      } else if (text.includes('CHAVE_NAO_ENCONTRADA') || text.includes('NAO_ENCONTRADA')) {
+      } else if (text.toUpperCase().includes('NAO_ENCONTRADA') || text.toUpperCase().includes('NÃO')) {
         console.log('❌ IA não encontrou a chave na imagem');
         return null;
       } else if (cleanKey.length > 0) {
@@ -261,6 +277,25 @@ Agora analise a imagem e retorne APENAS a chave de 44 dígitos:
       <div className="p-4 pb-20">
         {!invoiceData ? (
           <>
+            {/* Dicas de Como Fotografar */}
+            <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 mb-4">
+              <h3 className="font-bold text-blue-900 mb-2">💡 Como tirar a foto:</h3>
+              <ul className="text-sm text-blue-800 space-y-1">
+                <li>📸 Tire foto do <strong>RODAPÉ</strong> do cupom</li>
+                <li>🔲 Capture o <strong>QR Code</strong></li>
+                <li>🔢 Inclua os <strong>44 números</strong> abaixo do QR Code</li>
+                <li>💡 Boa iluminação, sem sombra</li>
+                <li>📏 Números legíveis e nítidos</li>
+              </ul>
+              <div className="mt-3 p-2 bg-white rounded text-xs text-gray-600 border border-blue-200">
+                <div className="font-mono text-center">
+                  ⬛⬜⬛⬜ ← QR Code<br/>
+                  www.sefaz...consulta<br/>
+                  <strong className="text-blue-600">2524 1234 5678 9012 3456...</strong> ← 44 números
+                </div>
+              </div>
+            </div>
+
             {/* Botão Tirar Foto */}
             <label className="block mb-4">
               <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white p-8 rounded-2xl shadow-lg active:scale-95 transition cursor-pointer text-center">
