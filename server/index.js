@@ -302,6 +302,28 @@ app.put('/api/ingredients/:id', async (req, res) => {
   }
 });
 
+// DELETE - Limpar todos os ingredientes (resetar banco) - DEVE VIR ANTES DE :id
+app.delete('/api/ingredients/clear/all', async (req, res) => {
+  try {
+    const deletedIngredients = await Ingredient.deleteMany({});
+    const deletedRecipes = await Recipe.deleteMany({});
+    const deletedMovements = await StockMovement.deleteMany({});
+    
+    res.json({ 
+      success: true, 
+      message: 'Banco de dados limpo com sucesso',
+      deleted: {
+        ingredients: deletedIngredients.deletedCount,
+        recipes: deletedRecipes.deletedCount,
+        movements: deletedMovements.deletedCount
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao limpar banco:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // DELETE - Deletar ingrediente
 app.delete('/api/ingredients/:id', async (req, res) => {
   try {
@@ -387,17 +409,43 @@ app.post('/api/stock-entries/bulk', async (req, res) => {
         // Normaliza nome do ingrediente
         const normalizedName = item.name.toLowerCase().trim();
         
-        // Busca ou cria ingrediente
+        // Extrai primeira palavra para busca inteligente (ex: "arroz chines" -> "arroz")
+        const firstWord = normalizedName.split(/\s+/)[0];
+        
+        // Busca ingrediente de 3 formas (da mais específica para mais genérica):
+        // 1. Nome exato
         let ingredient = await Ingredient.findOne({ 
           name: { $regex: new RegExp(`^${normalizedName}$`, 'i') } 
         });
+        
+        // 2. Se não encontrou, busca pela primeira palavra
+        if (!ingredient && firstWord.length >= 3) {
+          ingredient = await Ingredient.findOne({ 
+            name: { $regex: new RegExp(`^${firstWord}`, 'i') } 
+          });
+          
+          if (ingredient) {
+            console.log(`🔗 Match inteligente: "${item.name}" -> "${ingredient.name}"`);
+          }
+        }
+        
+        // 3. Se ainda não encontrou, busca se o nome contém a primeira palavra
+        if (!ingredient && firstWord.length >= 3) {
+          ingredient = await Ingredient.findOne({ 
+            name: { $regex: new RegExp(firstWord, 'i') } 
+          });
+          
+          if (ingredient) {
+            console.log(`🔗 Match parcial: "${item.name}" -> "${ingredient.name}"`);
+          }
+        }
 
         if (!ingredient) {
           // Cria novo ingrediente
           ingredient = await Ingredient.create({
             name: item.name,
-            category: 'outros',
-            unit: item.unit || 'unidade',
+            category: 'outro',
+            unit: (item.unit || 'unidade').toLowerCase(),
             currentStock: 0,
             minStock: 1,
             cost: 0,
@@ -408,7 +456,30 @@ app.post('/api/stock-entries/bulk', async (req, res) => {
 
         // Atualiza estoque
         const oldStock = ingredient.currentStock;
-        ingredient.currentStock += item.quantity;
+        
+        // Converte quantidade para a unidade do ingrediente
+        let quantityToAdd = item.quantity;
+        const itemUnit = (item.unit || 'unidade').toLowerCase();
+        const ingredientUnit = ingredient.unit.toLowerCase();
+        
+        // Conversão kg <-> g
+        if (itemUnit === 'kg' && ingredientUnit === 'g') {
+          quantityToAdd = item.quantity * 1000;
+          console.log(`🔄 Conversão: ${item.quantity}kg -> ${quantityToAdd}g`);
+        } else if (itemUnit === 'g' && ingredientUnit === 'kg') {
+          quantityToAdd = item.quantity / 1000;
+          console.log(`🔄 Conversão: ${item.quantity}g -> ${quantityToAdd}kg`);
+        }
+        // Conversão l <-> ml
+        else if (itemUnit === 'l' && ingredientUnit === 'ml') {
+          quantityToAdd = item.quantity * 1000;
+          console.log(`🔄 Conversão: ${item.quantity}l -> ${quantityToAdd}ml`);
+        } else if (itemUnit === 'ml' && ingredientUnit === 'l') {
+          quantityToAdd = item.quantity / 1000;
+          console.log(`🔄 Conversão: ${item.quantity}ml -> ${quantityToAdd}l`);
+        }
+        
+        ingredient.currentStock += quantityToAdd;
         
         // Atualiza custo médio ponderado
         if (item.unitCost && item.unitCost > 0) {
@@ -425,7 +496,7 @@ app.post('/api/stock-entries/bulk', async (req, res) => {
           ingredientId: ingredient._id,
           ingredientName: ingredient.name,
           type: 'entrada',
-          quantity: item.quantity,
+          quantity: quantityToAdd,
           unitCost: item.unitCost || 0,
           totalCost: item.totalCost || (item.quantity * (item.unitCost || 0)),
           source: source || 'cupom_fiscal',

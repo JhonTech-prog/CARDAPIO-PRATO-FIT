@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Package, Plus, AlertTriangle, TrendingDown, Search, Upload, Camera, Sparkles, Receipt, DollarSign, QrCode } from 'lucide-react';
+import { Package, Plus, AlertTriangle, TrendingDown, Search, Upload, Camera, Sparkles, Receipt, DollarSign, QrCode, Edit, Trash2, Save, X } from 'lucide-react';
 import { recipeOCRService } from '../services/recipeOCRService';
 import { invoiceOCRService } from '../services/invoiceOCRService';
 import { nfceService } from '../services/nfceService';
@@ -39,6 +39,8 @@ const IngredientsManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [alerts, setAlerts] = useState<Ingredient[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<Ingredient | null>(null);
   
   // OCR State (receitas)
   const [ocrImage, setOcrImage] = useState<string | null>(null);
@@ -51,6 +53,8 @@ const IngredientsManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [invoiceProcessing, setInvoiceProcessing] = useState(false);
   const [invoiceData, setInvoiceData] = useState<any>(null);
   const [showQRScanner, setShowQRScanner] = useState(false);
+  const [invoiceText, setInvoiceText] = useState<string>('');
+  const [stockEntrySummary, setStockEntrySummary] = useState<any>(null);
 
   // Form states
   const [newIngredient, setNewIngredient] = useState<Ingredient>({
@@ -95,6 +99,56 @@ const IngredientsManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       if (data.success) setAlerts(data.data);
     } catch (error) {
       console.error('Erro ao carregar alertas:', error);
+    }
+  };
+
+  const handleEditIngredient = (ingredient: Ingredient) => {
+    setEditingId(ingredient._id || null);
+    setEditForm({ ...ingredient });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editForm || !editingId) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/api/ingredients/${editingId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editForm)
+      });
+      
+      if (response.ok) {
+        alert('✅ Ingrediente atualizado!');
+        setEditingId(null);
+        setEditForm(null);
+        loadIngredients();
+      }
+    } catch (error) {
+      console.error('Erro ao atualizar:', error);
+      alert('Erro ao atualizar ingrediente');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditForm(null);
+  };
+
+  const handleDeleteIngredient = async (id: string, name: string) => {
+    if (!confirm(`Tem certeza que deseja excluir "${name}"?`)) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/api/ingredients/${id}`, {
+        method: 'DELETE'
+      });
+      
+      if (response.ok) {
+        alert('✅ Ingrediente excluído!');
+        loadIngredients();
+      }
+    } catch (error) {
+      console.error('Erro ao excluir:', error);
+      alert('Erro ao excluir ingrediente');
     }
   };
 
@@ -412,6 +466,66 @@ const IngredientsManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     }
   };
 
+  const handleProcessInvoiceText = async () => {
+    if (!invoiceText.trim()) {
+      alert('⚠️ Cole o texto da nota fiscal');
+      return;
+    }
+
+    setInvoiceProcessing(true);
+    
+    try {
+      console.log('📝 Processando texto da nota fiscal...');
+      
+      // Processa texto com Gemini primeiro
+      const result = await invoiceOCRService.extractInvoiceDataFromText(invoiceText);
+      
+      if (!result.success || !result.data) {
+        throw new Error(result.error || 'Erro ao processar texto');
+      }
+
+      const invoiceData = result.data;
+      
+      // Envia para o backend
+      const response = await fetch(`${API_URL}/api/stock-entries/bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          supplier: invoiceData.supplier || 'Fornecedor',
+          invoiceNumber: 'N/A',
+          date: new Date().toISOString(),
+          items: invoiceData.items.map((item: any) => ({
+            name: item.name,
+            quantity: item.quantity || 1,
+            unit: item.unit || 'unidade',
+            unitCost: item.unitCost || (item.totalCost / (item.quantity || 1)),
+            totalCost: item.totalCost
+          })),
+          source: 'nota_fiscal_texto'
+        })
+      });
+
+      if (response.ok) {
+        const responseData = await response.json();
+        setStockEntrySummary({
+          items: invoiceData.items,
+          supplier: invoiceData.supplier || 'Fornecedor',
+          totalItems: invoiceData.items.length
+        });
+        setInvoiceText('');
+        loadIngredients();
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao salvar no servidor');
+      }
+    } catch (error: any) {
+      console.error('❌ Erro:', error);
+      alert(`Erro ao processar texto: ${error.message}`);
+    } finally {
+      setInvoiceProcessing(false);
+    }
+  };
+
   // Handler para QR Code
   const handleQRCodeScan = async (qrCodeData: string) => {
     setShowQRScanner(false);
@@ -619,31 +733,138 @@ const IngredientsManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     <th className="px-6 py-4 text-left text-xs font-black text-gray-500 uppercase">Mínimo</th>
                     <th className="px-6 py-4 text-left text-xs font-black text-gray-500 uppercase">Custo</th>
                     <th className="px-6 py-4 text-left text-xs font-black text-gray-500 uppercase">Categoria</th>
+                    <th className="px-6 py-4 text-left text-xs font-black text-gray-500 uppercase">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {filteredIngredients.map((ing) => (
                     <tr key={ing._id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          {ing.currentStock <= ing.minStock && (
-                            <TrendingDown className="text-orange-500" size={18} />
-                          )}
-                          <span className="font-bold">{ing.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={ing.currentStock <= ing.minStock ? 'text-orange-600 font-bold' : ''}>
-                          {ing.currentStock}{ing.unit}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-gray-500">{ing.minStock}{ing.unit}</td>
-                      <td className="px-6 py-4">R$ {ing.cost.toFixed(2)}</td>
-                      <td className="px-6 py-4">
-                        <span className="text-xs bg-gray-100 px-2 py-1 rounded-full uppercase font-bold">
-                          {ing.category}
-                        </span>
-                      </td>
+                      {editingId === ing._id ? (
+                        <>
+                          <td className="px-6 py-4">
+                            <input
+                              type="text"
+                              value={editForm?.name || ''}
+                              onChange={(e) => setEditForm({ ...editForm!, name: e.target.value })}
+                              className="border rounded px-2 py-1 w-full"
+                            />
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex gap-1 items-center">
+                              <input
+                                type="number"
+                                value={editForm?.currentStock || 0}
+                                onChange={(e) => setEditForm({ ...editForm!, currentStock: parseFloat(e.target.value) })}
+                                className="border rounded px-2 py-1 w-20"
+                              />
+                              <select
+                                value={editForm?.unit || 'g'}
+                                onChange={(e) => setEditForm({ ...editForm!, unit: e.target.value as any })}
+                                className="border rounded px-1 py-1"
+                              >
+                                <option value="g">g</option>
+                                <option value="kg">kg</option>
+                                <option value="ml">ml</option>
+                                <option value="l">l</option>
+                                <option value="unidade">un</option>
+                              </select>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex gap-1 items-center">
+                              <input
+                                type="number"
+                                value={editForm?.minStock || 0}
+                                onChange={(e) => setEditForm({ ...editForm!, minStock: parseFloat(e.target.value) })}
+                                className="border rounded px-2 py-1 w-20"
+                              />
+                              <span className="text-gray-500 text-sm">{editForm?.unit}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={editForm?.cost || 0}
+                              onChange={(e) => setEditForm({ ...editForm!, cost: parseFloat(e.target.value) })}
+                              className="border rounded px-2 py-1 w-24"
+                            />
+                          </td>
+                          <td className="px-6 py-4">
+                            <select
+                              value={editForm?.category || 'outro'}
+                              onChange={(e) => setEditForm({ ...editForm!, category: e.target.value as any })}
+                              className="border rounded px-2 py-1"
+                            >
+                              <option value="proteina">Proteína</option>
+                              <option value="carboidrato">Carboidrato</option>
+                              <option value="vegetal">Vegetal</option>
+                              <option value="tempero">Tempero</option>
+                              <option value="acompanhamento">Acompanhamento</option>
+                              <option value="outro">Outro</option>
+                            </select>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex gap-2">
+                              <button
+                                onClick={handleSaveEdit}
+                                className="bg-emerald-600 text-white p-2 rounded hover:bg-emerald-700"
+                                title="Salvar"
+                              >
+                                <Save size={16} />
+                              </button>
+                              <button
+                                onClick={handleCancelEdit}
+                                className="bg-gray-500 text-white p-2 rounded hover:bg-gray-600"
+                                title="Cancelar"
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
+                              {ing.currentStock <= ing.minStock && (
+                                <TrendingDown className="text-orange-500" size={18} />
+                              )}
+                              <span className="font-bold">{ing.name}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={ing.currentStock <= ing.minStock ? 'text-orange-600 font-bold' : ''}>
+                              {ing.currentStock}{ing.unit}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-gray-500">{ing.minStock}{ing.unit}</td>
+                          <td className="px-6 py-4">R$ {ing.cost.toFixed(2)}</td>
+                          <td className="px-6 py-4">
+                            <span className="text-xs bg-gray-100 px-2 py-1 rounded-full uppercase font-bold">
+                              {ing.category}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleEditIngredient(ing)}
+                                className="text-blue-600 hover:text-blue-800 p-2"
+                                title="Editar"
+                              >
+                                <Edit size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteIngredient(ing._id!, ing.name)}
+                                className="text-red-600 hover:text-red-800 p-2"
+                                title="Excluir"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -788,25 +1009,85 @@ const IngredientsManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               {/* Resultado */}
               {ocrResult && (
                 <div className="mt-6 border-t pt-6">
-                  <h4 className="font-bold text-lg mb-4">Receita Extraída:</h4>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="font-bold mb-2">{ocrResult.productName}</p>
+                  <h4 className="font-bold text-lg mb-4 text-emerald-600">✅ Receita Extraída - Revise e Corrija</h4>
+                  <div className="bg-emerald-50 p-4 rounded-lg mb-4 border-2 border-emerald-200">
+                    <p className="font-bold mb-2 text-lg">{ocrResult.productName}</p>
                     <p className="text-sm text-gray-600 mb-3">Porção: {ocrResult.portionSize}g</p>
-                    <div className="space-y-2">
+                    
+                    <div className="space-y-3">
+                      <p className="font-semibold text-sm text-emerald-700 mb-2">📝 Ingredientes (clique para editar):</p>
                       {ocrResult.ingredients.map((ing: any, idx: number) => (
-                        <div key={idx} className="flex justify-between text-sm">
-                          <span>{ing.name}</span>
-                          <span className="font-bold">{ing.quantity}{ing.unit}</span>
+                        <div key={idx} className="bg-white p-3 rounded-lg border-2 border-gray-200 hover:border-emerald-400 transition">
+                          <div className="flex items-center gap-3">
+                            <span className="text-gray-400 font-bold w-6">{idx + 1}.</span>
+                            <input
+                              type="text"
+                              value={ing.name}
+                              onChange={(e) => {
+                                const updated = [...ocrResult.ingredients];
+                                updated[idx].name = e.target.value;
+                                setOcrResult({ ...ocrResult, ingredients: updated });
+                              }}
+                              className="flex-1 px-3 py-2 border border-gray-300 rounded focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none"
+                              placeholder="Nome do ingrediente"
+                            />
+                            <input
+                              type="number"
+                              value={ing.quantity}
+                              onChange={(e) => {
+                                const updated = [...ocrResult.ingredients];
+                                updated[idx].quantity = Number(e.target.value);
+                                setOcrResult({ ...ocrResult, ingredients: updated });
+                              }}
+                              className="w-20 px-2 py-2 border border-gray-300 rounded text-center focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none"
+                            />
+                            <select
+                              value={ing.unit}
+                              onChange={(e) => {
+                                const updated = [...ocrResult.ingredients];
+                                updated[idx].unit = e.target.value;
+                                setOcrResult({ ...ocrResult, ingredients: updated });
+                              }}
+                              className="px-2 py-2 border border-gray-300 rounded focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none"
+                            >
+                              <option value="g">g</option>
+                              <option value="kg">kg</option>
+                              <option value="ml">ml</option>
+                              <option value="l">l</option>
+                              <option value="unidade">unidade</option>
+                              <option value="xícara">xícara</option>
+                              <option value="colher">colher</option>
+                            </select>
+                            <button
+                              onClick={() => {
+                                const updated = ocrResult.ingredients.filter((_: any, i: number) => i !== idx);
+                                setOcrResult({ ...ocrResult, ingredients: updated });
+                              }}
+                              className="text-red-500 hover:text-red-700 p-2"
+                              title="Remover ingrediente"
+                            >
+                              ✕
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
                   </div>
-                  <button
-                    onClick={handleSaveOCRRecipe}
-                    className="mt-4 bg-emerald-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-emerald-700"
-                  >
-                    Salvar Receita
-                  </button>
+                  
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setOcrResult(null)}
+                      className="flex-1 bg-gray-300 text-gray-700 px-6 py-3 rounded-lg font-bold hover:bg-gray-400"
+                    >
+                      ✕ Cancelar
+                    </button>
+                    <button
+                      onClick={handleSaveOCRRecipe}
+                      className="flex-1 bg-emerald-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-emerald-700"
+                    >
+                      ✓ Salvar Receita
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -820,149 +1101,64 @@ const IngredientsManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               <div className="flex items-center gap-3 mb-6">
                 <Receipt className="text-emerald-600" size={28} />
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-800">Entrada de Estoque</h2>
-                  <p className="text-gray-500 text-sm">Registre entradas via cupom fiscal ou manual</p>
+                  <h2 className="text-2xl font-bold text-gray-800">Cadastro de Nota Fiscal</h2>
+                  <p className="text-gray-500 text-sm">Cole o texto completo da nota fiscal</p>
                 </div>
               </div>
 
-              {/* Opções de entrada */}
-              <div className="grid md:grid-cols-3 gap-6 mb-6">
-                {/* QR Code NFC-e (RECOMENDADO) */}
-                <div className="border-2 border-dashed border-emerald-300 rounded-lg p-6 hover:border-emerald-500 transition-colors bg-emerald-50">
-                  <div className="flex items-center gap-2 mb-2">
-                    <QrCode className="text-emerald-600" size={20} />
-                    <span className="bg-emerald-600 text-white text-xs px-2 py-1 rounded-full font-bold">✨ MELHOR OPÇÃO</span>
-                  </div>
-                  <h3 className="font-bold text-lg mb-2">
-                    Escanear QR Code
-                  </h3>
-                  <p className="text-sm text-gray-600 mb-4">
-                    Tire foto APENAS do QR Code (quadradinho preto). Dados 100% precisos direto da SEFAZ!
-                  </p>
-                  <button
-                    onClick={() => setShowQRScanner(true)}
-                    className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-emerald-700 w-full"
-                  >
-                    <QrCode size={18} className="inline mr-2" />
-                    Escanear QR Code
-                  </button>
-                </div>
-
-                {/* Cupom Fiscal OCR */}
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-orange-500 transition-colors">
-                  <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
-                    <Camera className="text-orange-600" size={20} />
-                    Foto do Cupom (IA)
-                  </h3>
-                  <p className="text-sm text-gray-600 mb-2">
-                    ⚠️ Tire foto mostrando a <strong>LISTA DE PRODUTOS</strong> (parte do meio)
-                  </p>
-                  <p className="text-xs text-orange-600 mb-4">
-                    Menos preciso - pode não detectar todos os itens
-                  </p>
-                  <label className="cursor-pointer bg-gray-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-gray-700 inline-block w-full text-center">
-                    <Upload size={18} className="inline mr-2" />
-                    Upload Foto
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleInvoiceImageUpload}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-
-                {/* Entrada Manual */}
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-blue-500 transition-colors">
-                  <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
-                    <DollarSign className="text-blue-600" size={20} />
-                    Entrada Manual
-                  </h3>
-                  <p className="text-sm text-gray-600 mb-4">
-                    Para EMPASA, feiras, etc. Adicione quantidade e valor manualmente
-                  </p>
-                  <button className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 w-full">
-                    <Plus size={18} className="inline mr-2" />
-                    Adicionar
-                  </button>
-                </div>
-              </div>
-
-              {/* QR Code Scanner Modal */}
-              {/* {showQRScanner && (
-                <QRCodeScanner
-                  onScan={handleQRCodeScan}
-                  onClose={() => setShowQRScanner(false)}
-                />
-              )} */}
-
-              {/* Processing indicator */}
-              {invoiceProcessing && (
-                <div className="bg-emerald-50 border-2 border-emerald-200 rounded-lg p-6 mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
-                    <div>
-                      <p className="font-bold text-emerald-700">Processando nota fiscal...</p>
-                      <p className="text-sm text-emerald-600">Buscando dados da SEFAZ</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Preview da imagem do cupom */}
-              {invoiceImage && (
-                <div className="mb-6">
-                  <h3 className="font-bold mb-2">Cupom Fiscal Carregado:</h3>
-                  <img 
-                    src={invoiceImage} 
-                    alt="Cupom fiscal" 
-                    className="max-w-md rounded-lg border shadow-lg"
+              {/* Formulário de texto */}
+              <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl shadow-lg p-6">
+                <h3 className="text-white font-bold text-lg mb-3">📝 Cole o Texto da Nota</h3>
+                <p className="text-white text-sm mb-4">
+                  Copie todo o texto da nota fiscal e cole abaixo. O sistema vai extrair automaticamente os produtos, quantidades e valores.
+                </p>
+                
+                <div className="space-y-3">
+                  <textarea
+                    value={invoiceText || ''}
+                    onChange={(e) => setInvoiceText(e.target.value)}
+                    placeholder="Cole aqui todo o texto da nota fiscal...&#10;&#10;Exemplo:&#10;SUPERMERCADO XYZ&#10;ARROZ BRANCO 5KG - R$ 22,50&#10;FEIJAO PRETO 1KG - R$ 8,90&#10;BATATA 2KG - R$ 7,80&#10;..."
+                    rows={15}
+                    className="w-full p-4 border-2 border-white rounded-xl focus:border-yellow-300 outline-none text-sm font-mono bg-white"
+                    disabled={invoiceProcessing}
                   />
-                  {!invoiceProcessing && !invoiceData && (
-                    <button
-                      onClick={handleProcessInvoice}
-                      className="mt-4 bg-emerald-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-emerald-700 flex items-center gap-2"
-                    >
-                      <Sparkles size={18} />
-                      Processar com IA
-                    </button>
-                  )}
-                  {invoiceProcessing && (
-                    <div className="mt-4 text-emerald-600 font-bold animate-pulse">
-                      ⏳ Processando cupom fiscal com IA...
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Resultado do OCR do cupom */}
-              {invoiceData && (
-                <div className="bg-gray-50 p-6 rounded-lg">
-                  <h3 className="font-bold text-lg mb-4 text-emerald-700">✅ Cupom Processado!</h3>
                   
-                  <div className="mb-4 grid md:grid-cols-3 gap-4 bg-white p-4 rounded-lg">
-                    <div>
-                      <p className="text-xs text-gray-500">Fornecedor</p>
-                      <p className="font-bold">{invoiceData.supplier}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Data</p>
-                      <p className="font-bold">{invoiceData.date}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Valor Total</p>
-                      <p className="font-bold text-emerald-600">R$ {invoiceData.totalValue?.toFixed(2)}</p>
-                    </div>
+                  <button
+                    onClick={handleProcessInvoiceText}
+                    disabled={!invoiceText?.trim() || invoiceProcessing}
+                    className="w-full bg-white text-green-600 py-4 rounded-xl font-bold text-lg active:scale-95 transition disabled:bg-gray-300 disabled:text-gray-500 shadow-lg"
+                  >
+                    {invoiceProcessing ? '⏳ Processando...' : '🚀 Processar Nota Fiscal'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Resumo da Entrada de Estoque */}
+              {stockEntrySummary && (
+                <div className="mt-6 bg-emerald-50 border-2 border-emerald-200 rounded-lg p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-lg text-emerald-700">✅ Estoque Atualizado com Sucesso!</h3>
+                    <button
+                      onClick={() => setStockEntrySummary(null)}
+                      className="text-gray-500 hover:text-gray-700"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  
+                  <div className="mb-4 p-3 bg-white rounded-lg">
+                    <p className="text-sm text-gray-600">Fornecedor</p>
+                    <p className="font-bold text-gray-800">{stockEntrySummary.supplier}</p>
                   </div>
 
-                  <h4 className="font-bold mb-3">Itens Detectados:</h4>
+                  <h4 className="font-bold mb-3 text-gray-700">Itens Adicionados ao Estoque ({stockEntrySummary.totalItems}):</h4>
                   <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {invoiceData.items?.map((item: any, index: number) => (
-                      <div key={index} className="bg-white p-3 rounded-lg border flex justify-between items-center">
+                    {stockEntrySummary.items.map((item: any, idx: number) => (
+                      <div key={idx} className="bg-white p-3 rounded-lg border flex justify-between items-center">
                         <div>
-                          <p className="font-bold">{item.name}</p>
+                          <p className="font-bold text-gray-800">{item.name}</p>
                           <p className="text-sm text-gray-600">
-                            {item.quantity} {item.unit} × R$ {item.unitCost?.toFixed(2)}
+                            {item.quantity} {item.unit}
                           </p>
                         </div>
                         <div className="text-right">
@@ -970,24 +1166,6 @@ const IngredientsManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                         </div>
                       </div>
                     ))}
-                  </div>
-
-                  <div className="mt-6 flex gap-3">
-                    <button
-                      onClick={() => {
-                        setInvoiceData(null);
-                        setInvoiceImage(null);
-                      }}
-                      className="flex-1 bg-gray-500 text-white px-6 py-3 rounded-lg font-bold hover:bg-gray-600"
-                    >
-                      ❌ Cancelar
-                    </button>
-                    <button
-                      onClick={handleSaveInvoiceEntries}
-                      className="flex-1 bg-emerald-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-emerald-700"
-                    >
-                      💾 Registrar Entrada
-                    </button>
                   </div>
                 </div>
               )}

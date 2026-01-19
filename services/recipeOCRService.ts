@@ -6,7 +6,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
  */
 
 // @ts-ignore
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || 'AIzaSyAtdBlGO14fLgVGV_qfiRgi5cXPzRsc7DM';
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || 'AIzaSyBn8HC5au-4SGJmuR9S1VyrgHk_MWVRyB8';
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 /**
@@ -29,14 +29,22 @@ export async function extractRecipeFromImage(imageBase64: string, productName: s
     // Procura por modelos que suportam generateContent e vision
     const visionModels = modelsList.models?.filter((m: any) => 
       m.supportedGenerationMethods?.includes('generateContent') &&
-      (m.name.includes('vision') || m.name.includes('1.5'))
+      (m.name.includes('vision') || m.name.includes('1.5') || m.name.includes('2.0') || m.name.includes('2.5')) &&
+      !m.name.includes('robotics')
     );
     
     if (!visionModels || visionModels.length === 0) {
       throw new Error('Nenhum modelo de visão disponível. Modelos encontrados: ' + JSON.stringify(modelsList));
     }
     
-    const modelName = visionModels[0].name.split('/').pop(); // Pega apenas o nome sem o prefixo
+    // Prioriza gemini-2.5 (incluindo preview que estava funcionando)
+    let selectedModel = visionModels.find((m: any) => m.name.includes('gemini-2.5-flash')) ||
+                        visionModels.find((m: any) => m.name.includes('gemini-2.5') && m.name.includes('preview')) ||
+                        visionModels.find((m: any) => m.name.includes('gemini-1.5-flash') && !m.name.includes('exp')) ||
+                        visionModels.find((m: any) => m.name.includes('gemini-1.5-pro')) ||
+                        visionModels[0];
+    
+    const modelName = selectedModel.name.split('/').pop(); // Pega apenas o nome sem o prefixo
     console.log(`Usando modelo: ${modelName}`);
     
     const model = genAI.getGenerativeModel({ model: modelName });

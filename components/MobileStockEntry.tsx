@@ -4,7 +4,7 @@ import { nfceService } from '../services/nfceService';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001';
-const GEMINI_API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY || 'AIzaSyAtdBlGO14fLgVGV_qfiRgi5cXPzRsc7DM';
+const GEMINI_API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY || 'AIzaSyAJFkOo6CVhInYzaJTEui15MRv_xfVqCBw';
 
 const MobileStockEntry: React.FC = () => {
   const [accessKey, setAccessKey] = useState('');
@@ -12,6 +12,8 @@ const MobileStockEntry: React.FC = () => {
   const [invoiceData, setInvoiceData] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [extractedKey, setExtractedKey] = useState(''); // Código extraído da foto
+  const [imageUrl, setImageUrl] = useState(''); // URL da imagem
+  const [invoiceText, setInvoiceText] = useState(''); // Texto da nota colado
   const fileInputRef = useRef<HTMLInputElement>(null);
   const invoiceScreenshotRef = useRef<HTMLInputElement>(null);
 
@@ -19,8 +21,42 @@ const MobileStockEntry: React.FC = () => {
     try {
       console.log('🤖 Extraindo dados da nota fiscal com Gemini AI...');
       
+      // Lista modelos disponíveis primeiro
+      const listResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`
+      );
+      
+      if (!listResponse.ok) {
+        throw new Error('Não foi possível listar modelos disponíveis');
+      }
+      
+      const modelsList = await listResponse.json();
+      console.log('Modelos disponíveis:', modelsList);
+      
+      // Procura por modelos que suportam generateContent e vision
+      const visionModels = modelsList.models?.filter((m: any) => 
+        m.supportedGenerationMethods?.includes('generateContent') &&
+        (m.name.includes('vision') || m.name.includes('gemini-1.5') || m.name.includes('gemini-pro')) &&
+        !m.name.includes('robotics') &&
+        !m.name.includes('exp-') &&
+        !m.name.includes('preview')
+      );
+      
+      if (!visionModels || visionModels.length === 0) {
+        console.error('❌ Nenhum modelo adequado. Disponíveis:', modelsList.models?.map((m: any) => m.name));
+        throw new Error('Nenhum modelo de visão disponível');
+      }
+      
+      // Prioriza gemini-1.5-pro ou gemini-pro-vision
+      let selectedModel = visionModels.find((m: any) => m.name.includes('gemini-1.5-pro')) ||
+                          visionModels.find((m: any) => m.name.includes('gemini-pro-vision')) ||
+                          visionModels[0];
+      
+      const modelName = selectedModel.name.split('/').pop();
+      console.log(`✅ Usando modelo: ${modelName}`);
+      
       const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: modelName });
 
       const prompt = `
 Você é um OCR especializado em extrair dados de NOTAS FISCAIS ELETRÔNICAS (NFC-e) brasileiras.
@@ -120,7 +156,176 @@ ANALISE A IMAGEM:
       reader.readAsDataURL(file);
     } catch (error: any) {
       console.error('❌ Erro:', error);
-      alert(`Erro ao processar print: ${error.message}`);
+      alert(`Erro ao processar imagem: ${error.message}`);
+      setProcessing(false);
+    }
+  };
+
+  const handleImageUrl = async () => {
+    if (!imageUrl.trim()) {
+      alert('⚠️ Cole a URL da imagem');
+      return;
+    }
+
+    setProcessing(true);
+    
+    try {
+      console.log('🌐 Processando imagem da URL...');
+      
+      // Converte URL para base64
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const base64Image = event.target?.result as string;
+        
+        // Extrai dados com Gemini AI
+        const data = await extractInvoiceDataFromScreenshot(base64Image);
+        
+        if (!data.items || data.items.length === 0) {
+          alert('⚠️ Nenhum produto encontrado na imagem!');
+          setProcessing(false);
+          return;
+        }
+
+        setInvoiceData(data);
+        setImageUrl('');
+        setProcessing(false);
+      };
+      
+      reader.readAsDataURL(blob);
+    } catch (error: any) {
+      console.error('❌ Erro:', error);
+      alert(`Erro ao processar URL: ${error.message}\n\nVerifique se a URL está correta e acessível.`);
+      setProcessing(false);
+    }
+  };
+
+  const handleInvoiceText = async () => {
+    if (!invoiceText.trim()) {
+      alert('⚠️ Cole o texto da nota fiscal');
+      return;
+    }
+
+    setProcessing(true);
+    
+    try {
+      console.log('📝 Processando texto da nota fiscal...');
+      
+      // Lista modelos disponíveis
+      const listResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`
+      );
+      
+      if (!listResponse.ok) {
+        throw new Error('Não foi possível listar modelos disponíveis');
+      }
+      
+      const modelsList = await listResponse.json();
+      console.log('📋 Modelos disponíveis:', modelsList);
+      
+      // Procura modelos de texto (não precisa de visão)
+      const textModels = modelsList.models?.filter((m: any) => 
+        m.supportedGenerationMethods?.includes('generateContent') &&
+        !m.name.includes('vision') &&
+        !m.name.includes('robotics')
+      );
+      
+      if (!textModels || textModels.length === 0) {
+        console.error('❌ Nenhum modelo adequado. Disponíveis:', modelsList.models?.map((m: any) => m.name));
+        throw new Error('Nenhum modelo de texto disponível');
+      }
+      
+      // Prioriza gemini-2.5 (incluindo preview) para processamento de texto
+      const selectedModel = textModels.find((m: any) => m.name.includes('gemini-2.5-flash')) ||
+                           textModels.find((m: any) => m.name.includes('gemini-2.5') && m.name.includes('preview')) ||
+                           textModels.find((m: any) => m.name.includes('gemini-1.5-flash')) ||
+                           textModels[0];
+      const modelName = selectedModel.name.split('/').pop();
+      console.log(`✅ Usando modelo: ${modelName}`);
+      
+      const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+      const model = genAI.getGenerativeModel({ model: modelName });
+
+      const prompt = `
+Você é um assistente que extrai produtos de notas fiscais.
+
+📋 TAREFA: Do texto abaixo, extraia TODOS os produtos com:
+1. Nome do produto
+2. Quantidade (número)
+3. Valor total do produto (em reais)
+
+REGRAS:
+- Ignore cabeçalhos, rodapés, totais gerais
+- Se quantidade não especificada, use 1
+- Extraia TODOS os produtos que encontrar
+- Normalize nomes (remova códigos, deixe só o nome)
+
+📊 RETORNE UM JSON:
+{
+  "supplier": "Nome do fornecedor ou loja",
+  "items": [
+    {
+      "name": "ARROZ BRANCO",
+      "quantity": 5,
+      "totalCost": 22.50
+    }
+  ]
+}
+
+TEXTO DA NOTA:
+${invoiceText}
+
+RETORNE APENAS O JSON, SEM TEXTO ADICIONAL.
+`;
+
+      const result = await model.generateContent(prompt);
+      const response = result.response;
+      const text = response.text().trim();
+      
+      console.log('🤖 Resposta do Gemini:', text);
+
+      // Extrai JSON da resposta
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('Não foi possível extrair JSON da resposta');
+      }
+
+      const data = JSON.parse(jsonMatch[0]);
+      
+      if (!data.items || data.items.length === 0) {
+        alert('⚠️ Nenhum produto encontrado no texto!');
+        setProcessing(false);
+        return;
+      }
+
+      // Calcula valores derivados
+      data.items = data.items.map((item: any) => {
+        const quantity = item.quantity || 1;
+        const totalCost = item.totalCost || 0;
+        const unitCost = quantity > 0 ? totalCost / quantity : 0;
+        
+        return {
+          name: item.name,
+          quantity: quantity,
+          unit: item.unit || 'un',
+          unitCost: unitCost,
+          totalCost: totalCost
+        };
+      });
+
+      // Calcula total geral
+      data.totalValue = data.items.reduce((sum: number, item: any) => sum + item.totalCost, 0);
+
+      setInvoiceData(data);
+      setInvoiceText('');
+      setProcessing(false);
+      
+      console.log(`✅ ${data.items.length} produtos extraídos!`);
+    } catch (error: any) {
+      console.error('❌ Erro:', error);
+      alert(`Erro ao processar texto: ${error.message}`);
       setProcessing(false);
     }
   };
@@ -129,8 +334,42 @@ ANALISE A IMAGEM:
     try {
       console.log('🤖 Iniciando extração da chave com Gemini AI...');
       
+      // Primeiro lista modelos disponíveis (igual recipeOCRService)
+      const listResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`
+      );
+      
+      if (!listResponse.ok) {
+        throw new Error('Não foi possível listar modelos disponíveis');
+      }
+      
+      const modelsList = await listResponse.json();
+      console.log('Modelos disponíveis:', modelsList);
+      
+      // Procura por modelos que suportam generateContent e vision
+      const visionModels = modelsList.models?.filter((m: any) => 
+        m.supportedGenerationMethods?.includes('generateContent') &&
+        (m.name.includes('vision') || m.name.includes('gemini-1.5') || m.name.includes('gemini-pro')) &&
+        !m.name.includes('robotics') && // Exclui modelos de robótica
+        !m.name.includes('exp-') && // Exclui experimentais
+        !m.name.includes('preview') // Exclui previews
+      );
+      
+      if (!visionModels || visionModels.length === 0) {
+        console.error('❌ Nenhum modelo adequado. Disponíveis:', modelsList.models?.map((m: any) => m.name));
+        throw new Error('Nenhum modelo de visão disponível');
+      }
+      
+      // Prioriza gemini-1.5-pro ou gemini-pro-vision
+      let selectedModel = visionModels.find((m: any) => m.name.includes('gemini-1.5-pro')) ||
+                          visionModels.find((m: any) => m.name.includes('gemini-pro-vision')) ||
+                          visionModels[0];
+      
+      const modelName = selectedModel.name.split('/').pop();
+      console.log(`✅ Usando modelo: ${modelName}`);
+      
       const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: modelName });
 
       const prompt = `
 Você é um OCR especializado. Sua ÚNICA tarefa é encontrar e retornar uma sequência de 44 NÚMEROS.
@@ -143,7 +382,7 @@ Na imagem, há uma sequência de 44 dígitos numéricos que geralmente está:
 - Pode estar em 1, 2 ou 3 linhas
 
 ⚠️ NÃO PROCURE:
-- QR Code
+- QR Code (ignore completamente)
 - Código de barras
 - CNPJ (só tem 14 números)
 - Valores em dinheiro (tem vírgula/R$)
@@ -154,10 +393,7 @@ Na imagem, há uma sequência de 44 dígitos numéricos que geralmente está:
 - Se NÃO encontrar: retorne apenas "NAO_ENCONTRADA"
 - NÃO adicione explicações, APENAS os números OU "NAO_ENCONTRADA"
 
-🎯 DICA: Os 44 números geralmente aparecem logo após ou perto de texto como:
-- "Consulte pela chave de acesso"
-- "www.sefaz..."
-- São os ÚNICOS 44 números seguidos na nota
+🎯 DICA: Os 44 números geralmente aparecem logo após texto como "www.sefaz..." ou "Consulte pela chave"
 
 ANALISE A IMAGEM:
 `;
@@ -173,7 +409,7 @@ ANALISE A IMAGEM:
       const response = result.response;
       const text = response.text().trim();
       
-      console.log('🤖 Resposta bruta do Gemini:', text);
+      console.log('🤖 Resposta do Gemini:', text);
 
       // Extrai apenas números
       const cleanKey = text.replace(/\D/g, '');
@@ -186,21 +422,15 @@ ANALISE A IMAGEM:
       } else if (text.toUpperCase().includes('NAO_ENCONTRADA') || text.toUpperCase().includes('NÃO')) {
         console.log('❌ IA não encontrou a chave na imagem');
         return null;
-      } else if (cleanKey.length > 0) {
-        console.log('⚠️ Chave inválida - tem', cleanKey.length, 'dígitos, precisa de 44');
-        // Tenta pegar os primeiros ou últimos 44 dígitos se tiver mais
-        if (cleanKey.length > 44) {
-          const key44 = cleanKey.substring(0, 44);
-          console.log('🔧 Tentando usar primeiros 44 dígitos:', key44);
-          return key44;
-        }
-        return null;
-      } else {
-        console.log('❌ Nenhum número encontrado');
-        return null;
+      } else if (cleanKey.length > 44) {
+        const key44 = cleanKey.substring(0, 44);
+        console.log('🔧 Usando primeiros 44 dígitos:', key44);
+        return key44;
       }
+      
+      return null;
     } catch (error) {
-      console.error('❌ Erro ao extrair chave com Gemini:', error);
+      console.error('❌ Erro ao extrair chave:', error);
       return null;
     }
   };
@@ -381,132 +611,29 @@ ANALISE A IMAGEM:
       <div className="p-4 pb-20">
         {!invoiceData ? (
           <>
-            {/* MÉTODO PRINCIPAL: Upload do Print da SEFAZ */}
-            <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl shadow-lg p-6 mb-4">
-              <h2 className="text-white font-bold text-lg mb-3">🎯 MÉTODO RECOMENDADO</h2>
+            {/* Colar Texto da Nota */}
+            <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl shadow-lg p-6 mb-4">
+              <h2 className="text-white font-bold text-lg mb-3">📝 Cadastrar Nota Fiscal</h2>
               <p className="text-white text-sm mb-4">
-                1. Escaneie QR Code do cupom (câmera do celular)<br/>
-                2. Site da SEFAZ abre → Clique "Consultar"<br/>
-                3. Tire PRINT da tela com produtos<br/>
-                4. Faça upload abaixo ⬇️
+                Cole o texto completo da nota fiscal abaixo
               </p>
               
-              <label className="block">
-                <div className="bg-white text-blue-600 p-6 rounded-xl shadow active:scale-95 transition cursor-pointer text-center">
-                  <Camera size={48} className="mx-auto mb-3" />
-                  <div className="font-bold text-xl mb-2">📱 Upload Print da SEFAZ</div>
-                  <div className="text-sm text-gray-600">
-                    Print da tela com produtos → IA cadastra tudo
-                  </div>
-                </div>
-                <input
-                  ref={invoiceScreenshotRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleInvoiceScreenshot}
-                  className="hidden"
-                  disabled={processing}
-                />
-              </label>
-            </div>
-
-            <div className="text-center text-gray-400 text-sm my-4 font-bold">
-              ─── OU (menos confiável) ───
-            </div>
-
-            {/* PASSO 1: Extrair Código da Nota Física */}
-            <div className="bg-gray-100 rounded-2xl shadow p-6 mb-4 border-2 border-gray-300">
-              <h2 className="text-gray-700 font-bold text-lg mb-3">📸 Extrair Código Automaticamente</h2>
-              <p className="text-gray-600 text-sm mb-4">Foto do cupom físico → IA tenta extrair código</p>
-              
-              <label className="block">
-                <div className="bg-white text-gray-700 p-6 rounded-xl shadow active:scale-95 transition cursor-pointer text-center border">
-                  <Camera size={48} className="mx-auto mb-3" />
-                  <div className="font-bold text-xl mb-2">Tentar Ler Cupom</div>
-                  <div className="text-sm text-gray-600">
-                    Tire foto do RODAPÉ (QR Code + números)
-                  </div>
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handlePhotoUpload}
-                  className="hidden"
-                  disabled={processing}
-                />
-              </label>
-            </div>
-
-            {/* Exibir código extraído */}
-            {extractedKey && (
-              <div className="bg-green-50 border-2 border-green-500 rounded-xl p-4 mb-4">
-                <h3 className="font-bold text-green-900 mb-2">✅ Código Extraído:</h3>
-                <div className="bg-white p-3 rounded border border-green-300 mb-3">
-                  <div className="font-mono text-sm break-all">{extractedKey}</div>
-                </div>
-                
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(extractedKey);
-                    alert('✅ Código copiado!');
-                  }}
-                  className="w-full bg-blue-500 text-white py-2 rounded-lg mb-2 font-bold"
-                >
-                  📋 Copiar Código
-                </button>
-                
-                <a
-                  href={`https://www.sefaz.pb.gov.br/nfce/qrcode?p=${extractedKey}|2|1|1|`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block w-full bg-green-500 text-white py-2 rounded-lg text-center font-bold"
-                >
-                  🌐 Abrir na SEFAZ
-                </a>
-                
-                <div className="mt-3 p-3 bg-yellow-50 border border-yellow-300 rounded text-sm">
-                  <strong>⚠️ Agora:</strong>
-                  <ol className="list-decimal ml-4 mt-2 space-y-1">
-                    <li>Clique em "Abrir na SEFAZ" acima</li>
-                    <li>Cole o código e clique "Consultar"</li>
-                    <li>Tire PRINT da tela completa</li>
-                    <li>Use o botão azul no topo para upload ⬆️</li>
-                  </ol>
-                </div>
-              </div>
-            )}
-
-            <div className="text-center text-gray-500 text-sm my-4">ou digite manualmente</div>
-
-            {/* Opção Manual */}
-            <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-              <div className="text-center mb-4">
-                <Key size={48} className="mx-auto text-blue-600 mb-2" />
-                <h3 className="font-bold text-gray-800">Digite o código manualmente</h3>
-              </div>
-
               <div className="space-y-3">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={44}
-                  value={accessKey}
-                  onChange={(e) => setAccessKey(e.target.value.replace(/\D/g, ''))}
-                  placeholder="44 dígitos da chave de acesso"
-                  className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 outline-none text-center font-mono text-sm"
+                <textarea
+                  value={invoiceText}
+                  onChange={(e) => setInvoiceText(e.target.value)}
+                  placeholder="Cole aqui todo o texto da nota fiscal...&#10;&#10;Exemplo:&#10;SUPERMERCADO XYZ&#10;ARROZ BRANCO 5KG - R$ 22,50&#10;FEIJAO PRETO 1KG - R$ 8,90&#10;BATATA 2KG - R$ 7,80&#10;..."
+                  rows={15}
+                  className="w-full p-4 border-2 border-white rounded-xl focus:border-yellow-300 outline-none text-sm font-mono bg-white"
+                  disabled={processing}
                 />
-                <div className="text-xs text-gray-500 text-center">
-                  {accessKey.length}/44 dígitos
-                </div>
-
+                
                 <button
-                  onClick={handleProcessKey}
-                  disabled={processing || accessKey.length !== 44}
-                  className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold active:scale-95 transition disabled:bg-gray-300"
+                  onClick={handleInvoiceText}
+                  disabled={processing || !invoiceText.trim()}
+                  className="w-full bg-white text-green-600 py-4 rounded-xl font-bold text-lg active:scale-95 transition disabled:bg-gray-300 disabled:text-gray-500 shadow-lg"
                 >
-                  ✅ Validar Código
+                  {processing ? '⏳ Processando...' : '🚀 Processar Nota Fiscal'}
                 </button>
               </div>
             </div>
