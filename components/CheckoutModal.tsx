@@ -212,6 +212,15 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
     message += `*CUPOM PARA LOJA:* ${receiptLink}\n`;
     message += paymentMethod === 'link' ? `🔗 *LINK DE PAGAMENTO*` : `💠 *PIX*`;
 
+    // debug log
+    console.debug('Enviar pedido message:', message);
+    // open receipt in a new tab so the loja can print immediately
+    try {
+      window.open(receiptLink, '_blank');
+    } catch (err) {
+      console.warn('Falha ao abrir link do cupom automaticamente', err);
+    }
+    // open WhatsApp with the message (includes receipt link)
     window.open(`https://wa.me/5583988109997?text=${encodeURIComponent(message)}`, '_blank');
     setReceiptLink(receiptLink);
     setOrderSent(true);
