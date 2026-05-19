@@ -34,6 +34,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
       number: false,
       pickupTime: false
   });
+  const [receiptLink, setReceiptLink] = useState('');
+  const [orderSent, setOrderSent] = useState(false);
 
   useEffect(() => {
       if (fulfillmentType === 'pickup') {
@@ -49,6 +51,13 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
             setDeliveryFee(price);
       }
   }, [fulfillmentType, selectedNeighborhood]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setReceiptLink('');
+      setOrderSent(false);
+    }
+  }, [isOpen]);
 
   const normalizeText = (text: string) => {
     return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -204,7 +213,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
     message += paymentMethod === 'link' ? `🔗 *LINK DE PAGAMENTO*` : `💠 *PIX*`;
 
     window.open(`https://wa.me/5583988109997?text=${encodeURIComponent(message)}`, '_blank');
-    onClose();
+    setReceiptLink(receiptLink);
+    setOrderSent(true);
   };
 
   const handleCepChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -288,6 +298,16 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
             <textarea value={observation} onChange={(e) => setObservation(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="Observações (opcional)" rows={2} />
           </div>
         </div>
+        {receiptLink && (
+          <div className="p-4 border-t bg-emerald-50 space-y-3">
+            <div className="text-sm font-semibold text-emerald-800">Link do cupom para a loja</div>
+            <input readOnly value={receiptLink} className="w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm text-slate-700" />
+            <div className="flex gap-3">
+              <button type="button" onClick={() => navigator.clipboard.writeText(receiptLink)} className="flex-1 bg-emerald-600 text-white py-3 rounded-2xl font-bold">Copiar link</button>
+              <button type="button" onClick={() => window.open(receiptLink, '_blank')} className="flex-1 border border-emerald-600 text-emerald-700 py-3 rounded-2xl font-bold">Abrir cupom</button>
+            </div>
+          </div>
+        )}
         <div className="p-4 border-t bg-gray-50 space-y-3">
           <button onClick={handleFinishOrder} className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg"><MessageCircle size={20} /> Enviar Pedido no WhatsApp</button>
         </div>
