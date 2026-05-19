@@ -8,6 +8,7 @@ import CartSheet from './components/CartSheet';
 import KitSelector from './components/KitSelector';
 import AIChef from './components/AIChef';
 import CheckoutModal from './components/CheckoutModal';
+import ReceiptPage from './components/ReceiptPage';
 import LimitReachedModal from './components/LimitReachedModal';
 import AdminPanel from './components/AdminPanel';
 import MobileStockEntry from './components/MobileStockEntry';
@@ -54,6 +55,10 @@ const App: React.FC = () => {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isLimitModalOpen, setIsLimitModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const isReceiptRoute = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return window.location.pathname.startsWith('/receipt');
+  }, []);
   const [isLoadingData, setIsLoadingData] = useState(true);
 
   useEffect(() => {
@@ -148,6 +153,10 @@ const App: React.FC = () => {
         <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Carregando PratoFit...</p>
       </div>
     );
+  }
+
+  if (isReceiptRoute) {
+    return <ReceiptPage />;
   }
 
   // Rota Mobile de Estoque

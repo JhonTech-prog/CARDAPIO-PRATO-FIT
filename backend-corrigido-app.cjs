@@ -34,8 +34,8 @@ const MensagemSchema = new mongoose.Schema({
 });
 const Mensagem = mongoose.model('Mensagem', MensagemSchema);
 
+
 const port = process.env.PORT || 3000;
-const verifyToken = "G3rPF002513";
 
 // --- FUNÇÕES DE MÍDIA CORRIGIDAS ---
 
@@ -102,19 +102,23 @@ async function downloadMediaAsBase64(url) {
     }
 }
 
+
+// Token de verificação do webhook (Meta)
+const verifyToken = process.env.META_VERIFY_TOKEN || "SEU_TOKEN_AQUI";
+
 // 3. ROTAS
 
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
-  
+
   if (mode === 'subscribe' && token === verifyToken) {
     console.log("✅ Webhook verificado com sucesso");
     return res.status(200).send(challenge);
   }
-  
-  console.error("❌ Token de verificação inválido");
+
+  console.error(`❌ Token de verificação inválido. Recebido: ${token}, Esperado: ${verifyToken}`);
   res.status(403).send('Token inválido');
 });
 

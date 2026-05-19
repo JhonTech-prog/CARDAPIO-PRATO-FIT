@@ -125,7 +125,38 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
 
   if (!isOpen || !selectedKit) return null;
 
+  const deliveryAddress = fulfillmentType === 'delivery'
+    ? `${address}${number ? ', Nº ' + number : ''}${selectedNeighborhood ? ' - ' + selectedNeighborhood : ''}`
+    : PICKUP_INFO.address;
+
   const totalPrice = selectedKit.price + deliveryFee;
+  const lowStockItems = items.filter(item => item.stock < 5);
+  const hasLowStockItems = lowStockItems.length > 0;
+
+  const createReceiptPayload = () => ({
+    orderCode: `PF${Date.now()}`,
+    date: new Date().toISOString(),
+    customerName: name,
+    fulfillmentType,
+    cep,
+    address,
+    number,
+    neighborhood: selectedNeighborhood,
+    pickupTime,
+    items: items.map(item => ({ title: item.title, quantity: item.quantity })),
+    selectedKitName: selectedKit.name,
+    selectedKitPrice: selectedKit.price,
+    deliveryFee,
+    totalPrice,
+    paymentMethod,
+    observation,
+    lowStockWarning: hasLowStockItems,
+  });
+
+  const createReceiptLink = () => {
+    const payload = createReceiptPayload();
+    return `${window.location.origin}/receipt?order=${encodeURIComponent(JSON.stringify(payload))}`;
+  };
 
   const handleFinishOrder = () => {
     const newErrors = {
@@ -140,7 +171,11 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
     setErrors(newErrors);
     if (Object.values(newErrors).some(Boolean)) return;
 
+    const receiptPayload = createReceiptPayload();
+    const receiptLink = `${window.location.origin}/receipt?order=${encodeURIComponent(JSON.stringify(receiptPayload))}`;
+
     let message = `*NOVO PEDIDO - PRATOFIT* 🥗\n\n`;
+    message += `*Pedido:* ${receiptPayload.orderCode}\n`;
     message += `*Cliente:* ${name}\n`;
     
     if (fulfillmentType === 'delivery') {
@@ -159,9 +194,13 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
     message += `*Kit:* ${selectedKit.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n`;
     if (fulfillmentType === 'delivery') message += `*Taxa:* ${deliveryFee.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n`;
     message += `*TOTAL:* ${totalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n`;
+    if (hasLowStockItems) {
+      message += `*ATENÇÃO:* Alguns itens estão com estoque baixo (menos de 5 unidades). Pode ocorrer falta se outro cliente comprar antes de você.\n`;
+    }
     message += `--------------------------------\n`;
     items.forEach(item => { message += `• ${item.quantity}x ${item.title}\n`; });
     message += `--------------------------------\n`;
+    message += `*CUPOM PARA LOJA:* ${receiptLink}\n`;
     message += paymentMethod === 'link' ? `🔗 *LINK DE PAGAMENTO*` : `💠 *PIX*`;
 
     window.open(`https://wa.me/5583988109997?text=${encodeURIComponent(message)}`, '_blank');
@@ -195,6 +234,11 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
                 <span className="font-extrabold text-emerald-600 text-2xl">{totalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
             </div>
           </div>
+          {hasLowStockItems && (
+            <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-800">
+              <strong>Atenção:</strong> Algumas marmitas selecionadas estão com estoque baixo ({lowStockItems.length} {lowStockItems.length > 1 ? 'itens' : 'item'}) e podem ficar indisponíveis por vendas não avisadas.
+            </div>
+          )}
           <div className="space-y-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo <span className="text-red-500">*</span></label>
@@ -244,7 +288,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
             <textarea value={observation} onChange={(e) => setObservation(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="Observações (opcional)" rows={2} />
           </div>
         </div>
-        <div className="p-4 border-t bg-gray-50"><button onClick={handleFinishOrder} className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg"><MessageCircle size={20} /> Enviar Pedido no WhatsApp</button></div>
+        <div className="p-4 border-t bg-gray-50 space-y-3">
+          <button onClick={handleFinishOrder} className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg"><MessageCircle size={20} /> Enviar Pedido no WhatsApp</button>
+        </div>
       </div>
     </div>
   );
