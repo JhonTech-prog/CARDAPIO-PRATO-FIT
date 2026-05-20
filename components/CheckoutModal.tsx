@@ -13,6 +13,8 @@ interface CheckoutModalProps {
 
 type FulfillmentType = 'delivery' | 'pickup';
 
+const API_URL = import.meta.env.VITE_API_URL || window.location.origin;
+
 const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, selectedKit }) => {
   const [fulfillmentType, setFulfillmentType] = useState<FulfillmentType>('delivery');
   const [name, setName] = useState('');
@@ -36,6 +38,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
   });
   const [receiptLink, setReceiptLink] = useState('');
   const [orderSent, setOrderSent] = useState(false);
+  const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
       if (fulfillmentType === 'pickup') {
@@ -167,7 +170,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
     return `${window.location.origin}/receipt?order=${encodeURIComponent(JSON.stringify(payload))}`;
   };
 
-  const handleFinishOrder = () => {
+  const handleFinishOrder = async () => {
     const newErrors = {
       name: !name.trim() || name.trim().split(' ').length < 2,
       address: fulfillmentType === 'delivery' ? !address.trim() : false,
@@ -180,50 +183,87 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
     setErrors(newErrors);
     if (Object.values(newErrors).some(Boolean)) return;
 
+    setIsSending(true);
     const receiptPayload = createReceiptPayload();
-    const receiptLink = `${window.location.origin}/receipt?order=${encodeURIComponent(JSON.stringify(receiptPayload))}`;
+    const receiptTab = window.open('about:blank', '_blank');
+    const whatsappTab = window.open('about:blank', '_blank');
 
-    let message = `*NOVO PEDIDO - PRATOFIT* 🥗\n\n`;
-    message += `*Pedido:* ${receiptPayload.orderCode}\n`;
-    message += `*Cliente:* ${name}\n`;
-    
-    if (fulfillmentType === 'delivery') {
-        message += `*MODO:* ENTREGA 🛵\n`;
-        message += `*Endereço:* ${address}, Nº ${number}\n`;
-        message += `*CEP:* ${cep}\n`;
-        message += `*Bairro:* ${selectedNeighborhood} (+R$ ${deliveryFee.toFixed(2)})\n`;
-    } else {
-        message += `*MODO:* RETIRADA NA LOJA 🛍️\n`;
-        message += `*Horário de Retirada:* ${pickupTime}\n`;
-    }
-
-    if (observation) message += `*Obs:* ${observation}\n`;
-    message += `--------------------------------\n`;
-    message += `*Plano:* ${selectedKit.name}\n`;
-    message += `*Kit:* ${selectedKit.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n`;
-    if (fulfillmentType === 'delivery') message += `*Taxa:* ${deliveryFee.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n`;
-    message += `*TOTAL:* ${totalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n`;
-    if (hasLowStockItems) {
-      message += `*ATENÇÃO:* Alguns itens estão com estoque baixo (menos de 5 unidades). Pode ocorrer falta se outro cliente comprar antes de você.\n`;
-    }
-    message += `--------------------------------\n`;
-    items.forEach(item => { message += `• ${item.quantity}x ${item.title}\n`; });
-    message += `--------------------------------\n`;
-    message += `*CUPOM PARA LOJA:* ${receiptLink}\n`;
-    message += paymentMethod === 'link' ? `🔗 *LINK DE PAGAMENTO*` : `💠 *PIX*`;
-
-    // debug log
-    console.debug('Enviar pedido message:', message);
-    // open receipt in a new tab so the loja can print immediately
     try {
-      window.open(receiptLink, '_blank');
+      const response = await fetch(`${API_URL}/api/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(receiptPayload)
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(errorBody || 'Erro ao finalizar pedido');
+      }
+
+      const { receiptLink, orderCode } = await response.json();
+      setReceiptLink(receiptLink);
+
+      let message = `*NOVO PEDIDO - PRATOFIT* 🥗\n\n`;
+      message += `*Pedido:* ${orderCode}\n`;
+      message += `*Cliente:* ${name}\n`;
+      
+      if (fulfillmentType === 'delivery') {
+          message += `*MODO:* ENTREGA 🛵\n`;
+          message += `*Endereço:* ${address}, Nº ${number}\n`;
+          message += `*CEP:* ${cep}\n`;
+          message += `*Bairro:* ${selectedNeighborhood} (+R$ ${deliveryFee.toFixed(2)})\n`;
+      } else {
+          message += `*MODO:* RETIRADA NA LOJA 🛍️\n`;
+          message += `*Horário de Retirada:* ${pickupTime}\n`;
+      }
+
+      if (observation) message += `*Obs:* ${observation}\n`;
+      message += `--------------------------------\n`;
+      message += `*Plano:* ${selectedKit.name}\n`;
+      message += `*Kit:* ${selectedKit.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n`;
+      if (fulfillmentType === 'delivery') message += `*Taxa:* ${deliveryFee.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n`;
+      message += `*TOTAL:* ${totalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n`;
+      if (hasLowStockItems) {
+        message += `*ATENÇÃO:* Alguns itens estão com estoque baixo (menos de 5 unidades). Pode ocorrer falta se outro cliente comprar antes de você.\n`;
+      }
+      message += `--------------------------------\n`;
+      items.forEach(item => { message += `• ${item.quantity}x ${item.title}\n`; });
+      message += `--------------------------------\n`;
+      message += `*CUPOM PARA LOJA:* ${receiptLink}\n`;
+      message += paymentMethod === 'link' ? `🔗 *LINK DE PAGAMENTO*` : `💠 *PIX*`;
+
+      // debug log
+      console.debug('Enviar pedido message:', message);
+      const whatsappUrl = `https://wa.me/5583988109997?text=${encodeURIComponent(message)}`;
+
+      if (receiptLink && receiptTab) {
+        try {
+          receiptTab.location.href = receiptLink;
+        } catch (err) {
+          console.warn('Falha ao redirecionar o cupom no tab existente', err);
+          window.open(receiptLink, '_blank');
+        }
+      } else if (receiptLink) {
+        window.open(receiptLink, '_blank');
+      }
+
+      if (whatsappTab) {
+        try {
+          whatsappTab.location.href = whatsappUrl;
+        } catch (err) {
+          console.warn('Falha ao redirecionar o WhatsApp no tab existente', err);
+          window.open(whatsappUrl, '_blank');
+        }
+      } else {
+        window.open(whatsappUrl, '_blank');
+      }
+      setOrderSent(true);
     } catch (err) {
-      console.warn('Falha ao abrir link do cupom automaticamente', err);
+      console.error('Erro ao finalizar pedido:', err);
+      alert('Não foi possível finalizar o pedido. Tente novamente.');
+    } finally {
+      setIsSending(false);
     }
-    // open WhatsApp with the message (includes receipt link)
-    window.open(`https://wa.me/5583988109997?text=${encodeURIComponent(message)}`, '_blank');
-    setReceiptLink(receiptLink);
-    setOrderSent(true);
   };
 
   const handleCepChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -318,7 +358,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
           </div>
         )}
         <div className="p-4 border-t bg-gray-50 space-y-3">
-          <button onClick={handleFinishOrder} className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg"><MessageCircle size={20} /> Enviar Pedido no WhatsApp</button>
+          <button onClick={handleFinishOrder} disabled={isSending} className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg ${isSending ? 'bg-emerald-300 text-white cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>
+            <MessageCircle size={20} /> {isSending ? 'Enviando...' : 'Enviar Pedido no WhatsApp'}
+          </button>
         </div>
       </div>
     </div>

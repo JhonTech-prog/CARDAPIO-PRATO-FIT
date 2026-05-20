@@ -3,6 +3,7 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import axios from 'axios';
+import crypto from 'crypto';
 import { ifoodService } from './ifoodService.js';
 import { Ingredient, Recipe, StockMovement } from './ingredientModels.js';
 import { ingredientService } from './ingredientService.js';
@@ -32,6 +33,30 @@ const productSchema = new mongoose.Schema({
 });
 
 const Product = mongoose.model('Product', productSchema);
+
+const orderSchema = new mongoose.Schema({
+  orderCode: { type: String, required: true, unique: true },
+  receiptToken: { type: String, required: true, unique: true },
+  createdAt: { type: Date, default: Date.now },
+  status: { type: String, default: 'confirmed' },
+  customerName: String,
+  fulfillmentType: String,
+  cep: String,
+  address: String,
+  number: String,
+  neighborhood: String,
+  pickupTime: String,
+  selectedKitName: String,
+  selectedKitPrice: Number,
+  deliveryFee: Number,
+  totalPrice: Number,
+  paymentMethod: String,
+  observation: String,
+  lowStockWarning: Boolean,
+  items: [{ title: String, quantity: Number }]
+});
+
+const Order = mongoose.model('Order', orderSchema);
 
 // ================== ROTAS ==================
 
@@ -124,6 +149,66 @@ app.put('/api/products/:productId/stock', async (req, res) => {
     res.json({ success: true, data: product });
   } catch (error) {
     console.error('Erro ao atualizar produto:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST - Criar pedido e gerar link de cupom único
+app.post('/api/orders', async (req, res) => {
+  try {
+    const payload = req.body;
+    const receiptToken = crypto.randomUUID();
+    const orderCode = `PF${Date.now()}`;
+
+    const order = new Order({
+      orderCode,
+      receiptToken,
+      status: 'confirmed',
+      customerName: payload.customerName,
+      fulfillmentType: payload.fulfillmentType,
+      cep: payload.cep,
+      address: payload.address,
+      number: payload.number,
+      neighborhood: payload.neighborhood,
+      pickupTime: payload.pickupTime,
+      selectedKitName: payload.selectedKitName,
+      selectedKitPrice: payload.selectedKitPrice,
+      deliveryFee: payload.deliveryFee,
+      totalPrice: payload.totalPrice,
+      paymentMethod: payload.paymentMethod,
+      observation: payload.observation,
+      lowStockWarning: payload.lowStockWarning,
+      items: payload.items || []
+    });
+
+    await order.save();
+
+    const baseUrl = process.env.PUBLIC_URL || req.headers.origin || `http://localhost:${PORT}`;
+    const receiptLink = `${baseUrl.replace(/\/$/, '')}/receipt?token=${encodeURIComponent(receiptToken)}`;
+
+    res.status(201).json({ success: true, orderId: order._id, orderCode, receiptLink });
+  } catch (error) {
+    console.error('Erro ao criar pedido:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET - Buscar pedido por token do cupom
+app.get('/api/receipt', async (req, res) => {
+  try {
+    const token = req.query.token;
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ success: false, error: 'Token inválido' });
+    }
+
+    const order = await Order.findOne({ receiptToken: token }).lean();
+    if (!order) {
+      return res.status(404).json({ success: false, error: 'Pedido não encontrado' });
+    }
+
+    res.json({ success: true, order });
+  } catch (error) {
+    console.error('Erro ao buscar cupom:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

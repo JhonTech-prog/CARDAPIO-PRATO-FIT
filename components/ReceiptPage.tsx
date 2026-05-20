@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Printer } from 'lucide-react';
 import { PICKUP_INFO } from '../constants';
 
+const API_URL = import.meta.env.VITE_API_URL || window.location.origin;
+
 interface ReceiptItem {
   title: string;
   quantity: number;
@@ -9,7 +11,7 @@ interface ReceiptItem {
 
 interface ReceiptOrder {
   orderCode: string;
-  date: string;
+  createdAt: string;
   customerName: string;
   fulfillmentType: 'delivery' | 'pickup';
   cep: string;
@@ -27,33 +29,41 @@ interface ReceiptOrder {
   lowStockWarning: boolean;
 }
 
-const deserializeOrder = (raw: string) => {
-  try {
-    return JSON.parse(decodeURIComponent(raw)) as ReceiptOrder;
-  } catch {
-    return null;
-  }
-};
-
 const ReceiptPage: React.FC = () => {
   const [order, setOrder] = useState<ReceiptOrder | null>(null);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const orderParam = params.get('order');
-    if (!orderParam) {
-      setError('Pedido não encontrado.');
-      return;
-    }
+    const fetchOrder = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
 
-    const parsed = deserializeOrder(orderParam);
-    if (!parsed) {
-      setError('Dados do pedido inválidos.');
-      return;
-    }
+      if (!token) {
+        setError('Token do pedido não encontrado.');
+        setIsLoading(false);
+        return;
+      }
 
-    setOrder(parsed);
+      try {
+        const response = await fetch(`${API_URL}/api/receipt?token=${encodeURIComponent(token)}`);
+        if (!response.ok) {
+          const body = await response.json().catch(() => null);
+          setError(body?.error || 'Não foi possível carregar o cupom.');
+          return;
+        }
+
+        const data = await response.json();
+        setOrder(data.order);
+      } catch (fetchError) {
+        console.error('Erro ao buscar cupom:', fetchError);
+        setError('Erro de conexão ao carregar o cupom.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchOrder();
   }, []);
 
   const handlePrint = () => {
@@ -78,7 +88,7 @@ const ReceiptPage: React.FC = () => {
             <div className="space-y-6">
               <div className="text-center space-y-2">
                 <div className="text-2xl font-black text-slate-900">CUPOM DE PEDIDO</div>
-                <div className="text-sm text-slate-500">{new Date(order.date).toLocaleDateString('pt-BR')} {new Date(order.date).toLocaleTimeString('pt-BR')}</div>
+                <div className="text-sm text-slate-500">{new Date(order.createdAt).toLocaleDateString('pt-BR')} {new Date(order.createdAt).toLocaleTimeString('pt-BR')}</div>
                 <div className="text-xs uppercase tracking-[0.3em] text-emerald-600">Código: {order.orderCode}</div>
               </div>
 
