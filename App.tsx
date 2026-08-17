@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { APP_NAME } from './constants';
 import { MenuItem, CartItem, KitDefinition } from './types';
-import { apiService } from './services/apiService';
+import { erpService } from './services/erpService';
 import MenuCard from './components/MenuCard';
 import CartSheet from './components/CartSheet';
 import KitSelector from './components/KitSelector';
@@ -60,14 +60,25 @@ const App: React.FC = () => {
     return window.location.pathname.startsWith('/receipt');
   }, []);
   const [isLoadingData, setIsLoadingData] = useState(true);
+  const [menuLoadError, setMenuLoadError] = useState('');
+
+  const loadMenu = async () => {
+    setIsLoadingData(true);
+    setMenuLoadError('');
+
+    try {
+      setMenuItems(await erpService.getOnlineMenu());
+    } catch (error) {
+      console.error('Erro ao carregar cardápio do ERP:', error);
+      setMenuItems([]);
+      setMenuLoadError(error instanceof Error ? error.message : 'Não foi possível carregar o cardápio.');
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
 
   useEffect(() => {
-    const loadData = async () => {
-      const products = await apiService.getProducts();
-      setMenuItems(products);
-      setIsLoadingData(false);
-    };
-    loadData();
+    void loadMenu();
   }, []);
 
   const categorizedItems = useMemo<Record<string, MenuItem[]>>(() => {
@@ -129,13 +140,6 @@ const App: React.FC = () => {
     setCartItems(prev => prev.map(item => item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter(item => item.quantity > 0));
   };
 
-  const handleSaveStock = async (updatedItems: MenuItem[]) => {
-    const success = await apiService.updateStock(updatedItems);
-    if (success) {
-      setMenuItems(updatedItems);
-    }
-  };
-
   const checkAdminPassword = () => {
     if (adminPass === 'admin123') {
       setIsAdminMode(true);
@@ -155,6 +159,20 @@ const App: React.FC = () => {
     );
   }
 
+  if (menuLoadError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white p-6 text-center">
+        <div className="max-w-md rounded-3xl border border-red-200 bg-red-50 p-8">
+          <h1 className="text-xl font-black text-red-800">Não foi possível carregar o cardápio</h1>
+          <p className="mt-3 text-sm text-red-700">{menuLoadError}</p>
+          <button onClick={() => void loadMenu()} className="mt-6 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-black uppercase tracking-wider text-white hover:bg-emerald-700">
+            Tentar novamente
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (isReceiptRoute) {
     return <ReceiptPage />;
   }
@@ -168,7 +186,6 @@ const App: React.FC = () => {
     return (
       <AdminPanel 
         items={menuItems} 
-        onSave={handleSaveStock} 
         onExit={() => {
             setIsAdminMode(false);
             if (isSubdomainAdmin) {

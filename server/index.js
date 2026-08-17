@@ -53,6 +53,8 @@ const orderSchema = new mongoose.Schema({
   paymentMethod: String,
   observation: String,
   lowStockWarning: Boolean,
+  reservationId: String,
+  reservationExpiresAt: String,
   items: [{ title: String, quantity: Number }]
 });
 
@@ -163,7 +165,7 @@ app.post('/api/orders', async (req, res) => {
     const order = new Order({
       orderCode,
       receiptToken,
-      status: 'confirmed',
+      status: 'pending_payment',
       customerName: payload.customerName,
       fulfillmentType: payload.fulfillmentType,
       cep: payload.cep,
@@ -178,6 +180,8 @@ app.post('/api/orders', async (req, res) => {
       paymentMethod: payload.paymentMethod,
       observation: payload.observation,
       lowStockWarning: payload.lowStockWarning,
+      reservationId: payload.reservationId,
+      reservationExpiresAt: payload.reservationExpiresAt,
       items: payload.items || []
     });
 

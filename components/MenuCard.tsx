@@ -13,7 +13,7 @@ interface MenuCardProps {
 
 const MenuCard: React.FC<MenuCardProps> = ({ item, onAdd, onRemove, isLimitReached, quantity }) => {
   const [imgError, setImgError] = useState(false);
-  const isOutOfStock = item.stock <= 0;
+  const isOutOfStock = !item.available || item.stock <= 0;
   const isLowStock = item.stock > 0 && item.stock <= 5;
   const hasReachedStockLimit = quantity >= item.stock;
 

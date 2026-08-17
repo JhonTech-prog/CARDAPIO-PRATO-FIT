@@ -27,6 +27,8 @@ interface ReceiptOrder {
   paymentMethod: 'link' | 'pix';
   observation: string;
   lowStockWarning: boolean;
+  reservationId?: string;
+  reservationExpiresAt?: string;
 }
 
 const ReceiptPage: React.FC = () => {
@@ -98,6 +100,8 @@ const ReceiptPage: React.FC = () => {
                 <div className="mt-3 text-sm text-slate-600 space-y-1">
                   <div>Plano: {order.selectedKitName}</div>
                   <div>Pagamento: {order.paymentMethod === 'pix' ? 'PIX' : 'Link de pagamento'}</div>
+                  {order.reservationId && <div>Reserva ERP: {order.reservationId}</div>}
+                  {order.reservationExpiresAt && <div>Reserva válida até: {new Date(order.reservationExpiresAt).toLocaleString('pt-BR')}</div>}
                   {order.observation && <div>Obs: {order.observation}</div>}
                 </div>
               </div>

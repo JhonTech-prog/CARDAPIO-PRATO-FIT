@@ -4,7 +4,7 @@
 
 ✅ **Cadastro de Ingredientes** - Gerenciar matéria-prima (arroz, frango, etc.)  
 ✅ **Receitas** - Definir quais ingredientes compõem cada marmita  
-✅ **Decremento Automático** - Insumos baixam quando vende marmita  
+✅ **Estoque centralizado** - Disponibilidade e reservas do cardápio são controladas pelo ERP
 ✅ **Alertas de Estoque Baixo** - Aviso quando ingrediente está acabando  
 ✅ **Histórico de Movimentações** - Rastreabilidade completa  
 ✅ **Cálculo de Custo** - Custo de produção de cada marmita  
@@ -20,20 +20,18 @@
    ↓
 2. Define Receitas (Ex: Fit Tradicional = 200g arroz + 150g frango + 100g brócolis)
    ↓
-3. Cliente compra 1 Fit Tradicional
+3. Cliente inicia o checkout de 1 Fit Tradicional
    ↓
-4. Sistema decrementa:
-   - 1x Fit Tradicional do estoque de produtos
-   - 200g de arroz
-   - 150g de frango  
-   - 100g de brócolis
+4. O cardápio reserva 1x Fit Tradicional no ERP central
    ↓
-5. Se algum ingrediente ficar abaixo do mínimo → ALERTA!
+5. Após o pagamento, o ERP confirma a venda e aplica as regras de estoque
 ```
 
 ---
 
 ## 📋 1. Cadastrar Ingredientes
+
+O checkout público não baixa insumos nem confirma vendas automaticamente. Ele consulta o cardápio e cria reservas no ERP PRATOFIT-ADMIN; a confirmação acontece apenas após o pagamento.
 
 ### Via API:
 
@@ -270,23 +268,19 @@ Tipos de movimentação:
 
 ---
 
-## 🔄 7. Decremento Automático
+## 🔄 7. Reserva e Confirmação no ERP
 
 ### Como funciona:
 
-Quando uma venda é processada via:
+No checkout público, o cardápio chama o ERP central para reservar os produtos antes de abrir o WhatsApp:
 ```
-POST http://localhost:3001/api/products/decrement
+POST /api/online-orders/reservations
 ```
 
-O sistema automaticamente:
-1. Decrementa o estoque do produto (marmita)
-2. Busca a receita do produto
-3. Decrementa cada ingrediente da receita
-4. Registra no histórico
-5. Verifica alertas de estoque baixo
-
-**Você não precisa fazer nada manualmente!** 🎉
+O cardápio não decrementa produtos ou ingredientes e não confirma a venda. Depois de receber o pagamento, o fluxo operacional do ERP deve chamar:
+```
+POST /api/online-orders/:reservationId/confirm
+```
 
 ---
 
@@ -323,23 +317,18 @@ POST /api/recipes
 }
 ```
 
-### Passo 3: Cliente compra
+### Passo 3: Cliente inicia checkout
 
 ```javascript
-// Cliente compra 2 Fit Tradicional
-POST /api/products/decrement
+// O cardápio reserva 2 Fit Tradicional no ERP
+POST /api/online-orders/reservations
 {
-  "items": [
-    { "id": "fit-tradicional", "quantity": 2 }
-  ]
+  "items": [{ "externalProductId": "fit-tradicional", "quantity": 2 }],
+  "idempotencyKey": "uuid-do-checkout"
 }
 ```
 
-**Sistema automaticamente decrementa:**
-- 2x Fit Tradicional do estoque
-- 400g de arroz (200g x 2)
-- 300g de frango (150g x 2)
-- 200g de brócolis (100g x 2)
+O ERP devolve um `reservationId`, enviado no pedido do WhatsApp. A confirmação e qualquer baixa de estoque ocorrem somente após o pagamento.
 
 ---
 

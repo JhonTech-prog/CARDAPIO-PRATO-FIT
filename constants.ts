@@ -73,6 +73,7 @@ export const IFOOD_LINK = "https://www.ifood.com.br/delivery/campina-grande-pb/p
 export const MENU_ITEMS: MenuItem[] = [
   {
     id: '1',
+    externalProductId: '1',
     title: 'Bobó de Frango',
     description: 'Cremoso bobó de frango feito with macaxeira fresca e leite de coco. Acompanha arroz branco soltinho.',
     price: 0,
@@ -80,10 +81,12 @@ export const MENU_ITEMS: MenuItem[] = [
     imageUrl: 'https://static.ifood-static.com.br/image/upload/t_medium/pratos/dabc25a4-58f9-43a9-a660-9c8f5125abfd/202402151100_03UX_i.jpg', 
     category: 'Marmitas PratoFit',
     tags: ['Frango', 'Cremoso'],
-    stock: 15
+    stock: 15,
+    available: true
   },
   {
     id: '2',
+    externalProductId: '2',
     title: 'Escondidinho de Frango com Batata Doce',
     description: 'Purê aveludado de batata doce com recheio de frango desfiado temperado com ervas finas.',
     price: 0,
@@ -91,10 +94,12 @@ export const MENU_ITEMS: MenuItem[] = [
     imageUrl: 'https://static.ifood-static.com.br/image/upload/t_medium/pratos/dabc25a4-58f9-43a9-a660-9c8f5125abfd/202402151102_DY8N_i.jpg',
     category: 'Marmitas PratoFit',
     tags: ['Fit', 'Low Carb'],
-    stock: 10
+    stock: 10,
+    available: true
   },
   {
     id: '3',
+    externalProductId: '3',
     title: 'Escondidinho de Carne Moída',
     description: 'Clássico escondidinho com purê de batata inglesa e carne moída premium selecionada.',
     price: 0,
@@ -102,10 +107,12 @@ export const MENU_ITEMS: MenuItem[] = [
     imageUrl: 'https://static-images.ifood.com.br/pratos/dabc25a4-58f9-43a9-a660-9c8f5125abfd/202406111535_CQYS_i.jpg',
     category: 'Marmitas PratoFit',
     tags: ['Carne'],
-    stock: 12
+    stock: 12,
+    available: true
   },
   {
     id: '4',
+    externalProductId: '4',
     title: 'Espaguete a Bolonhesa',
     description: 'Massa grano duro com molho artesanal de tomate e carne moída suculenta.',
     price: 0,
@@ -113,10 +120,12 @@ export const MENU_ITEMS: MenuItem[] = [
     imageUrl: 'https://static.ifood-static.com.br/image/upload/t_medium/pratos/dabc25a4-58f9-43a9-a660-9c8f5125abfd/202402151118_Y3R3_i.jpg',
     category: 'Marmitas PratoFit',
     tags: ['Massa'],
-    stock: 10
+    stock: 10,
+    available: true
   },
   {
     id: '5',
+    externalProductId: '5',
     title: 'Kibe de Forno',
     description: 'Kibe assado suculento, temperado com hortelã fresca e especiarias.',
     price: 0,
@@ -124,10 +133,12 @@ export const MENU_ITEMS: MenuItem[] = [
     imageUrl: 'https://static.ifood-static.com.br/image/upload/t_medium/pratos/dabc25a4-58f9-43a9-a660-9c8f5125abfd/202402151104_078B_i.jpg',
     category: 'Marmitas PratoFit',
     tags: ['Assado', 'Proteico'],
-    stock: 15
+    stock: 15,
+    available: true
   },
   {
     id: '6',
+    externalProductId: '6',
     title: 'Mexido à Mineira',
     description: 'Combinação saborosa de arroz, feijão, ovo mexido, couve e cubinhos de frango.',
     price: 0,
@@ -135,10 +146,12 @@ export const MENU_ITEMS: MenuItem[] = [
     imageUrl: 'https://static.ifood-static.com.br/image/upload/t_medium/pratos/dabc25a4-58f9-43a9-a660-9c8f5125abfd/202402151117_74F1_i.jpg',
     category: 'Marmitas PratoFit',
     tags: ['Completo'],
-    stock: 8
+    stock: 8,
+    available: true
   },
   {
     id: '7',
+    externalProductId: '7',
     title: 'Rubacão Fit',
     description: 'Versão equilibrada com arroz integral, feijão fradinho, frango e queijo coalho.',
     price: 0,
@@ -146,10 +159,12 @@ export const MENU_ITEMS: MenuItem[] = [
     imageUrl: 'https://static.ifood-static.com.br/image/upload/t_medium/pratos/dabc25a4-58f9-43a9-a660-9c8f5125abfd/202402151114_55U2_i.jpg',
     category: 'Marmitas PratoFit',
     tags: ['Regional'],
-    stock: 10
+    stock: 10,
+    available: true
   },
   {
     id: '9',
+    externalProductId: '9',
     title: 'Feijuca Fit',
     description: 'Feijoada leve com carnes magras, arroz branco e couve refogada.',
     price: 0,
@@ -157,10 +172,12 @@ export const MENU_ITEMS: MenuItem[] = [
     imageUrl: 'https://static.ifood-static.com.br/image/upload/t_medium/pratos/dabc25a4-58f9-43a9-a660-9c8f5125abfd/202402151107_IPNX_i.jpg',
     category: 'Marmitas PratoFit',
     tags: ['Tradicional'],
-    stock: 7
+    stock: 7,
+    available: true
   },
   {
     id: '11',
+    externalProductId: '11',
     title: 'Galinhada Integral',
     description: 'Arroz integral com pedaços suculentos de frango ao molho de tomates frescos.',
     price: 0,
@@ -168,7 +185,8 @@ export const MENU_ITEMS: MenuItem[] = [
     imageUrl: 'https://static-images.ifood.com.br/pratos/dabc25a4-58f9-43a9-a660-9c8f5125abfd/202402151110_KHY5_i.jpg',
     category: 'Marmitas PratoFit',
     tags: ['Integral'],
-    stock: 5
+    stock: 5,
+    available: true
   }
 ];
 
