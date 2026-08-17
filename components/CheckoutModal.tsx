@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { X, MessageCircle, AlertCircle, MapPin, Search, Loader2, Store, Bike, Clock, CreditCard } from 'lucide-react';
 import { CartItem, KitDefinition } from '../types';
 import { DELIVERY_ZONES, PICKUP_INFO } from '../constants';
+import { erpService, StockReservation } from '../services/erpService';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -39,6 +40,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
   const [receiptLink, setReceiptLink] = useState('');
   const [orderSent, setOrderSent] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [reservationError, setReservationError] = useState('');
 
   useEffect(() => {
       if (fulfillmentType === 'pickup') {
@@ -59,6 +61,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
     if (isOpen) {
       setReceiptLink('');
       setOrderSent(false);
+      setReservationError('');
     }
   }, [isOpen]);
 
@@ -145,7 +148,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
   const lowStockItems = items.filter(item => item.stock < 5);
   const hasLowStockItems = lowStockItems.length > 0;
 
-  const createReceiptPayload = () => ({
+  const createReceiptPayload = (reservation: StockReservation) => ({
     orderCode: `PF${Date.now()}`,
     date: new Date().toISOString(),
     customerName: name,
@@ -163,12 +166,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
     paymentMethod,
     observation,
     lowStockWarning: hasLowStockItems,
+    reservationId: reservation.reservationId,
+    reservationExpiresAt: reservation.expiresAt,
   });
-
-  const createReceiptLink = () => {
-    const payload = createReceiptPayload();
-    return `${window.location.origin}/receipt?order=${encodeURIComponent(JSON.stringify(payload))}`;
-  };
 
   const handleFinishOrder = async () => {
     const newErrors = {
@@ -184,11 +184,20 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
     if (Object.values(newErrors).some(Boolean)) return;
 
     setIsSending(true);
-    const receiptPayload = createReceiptPayload();
-    const receiptTab = window.open('about:blank', '_blank');
-    const whatsappTab = window.open('about:blank', '_blank');
+    setReservationError('');
+    let reservation: StockReservation | null = null;
 
     try {
+      reservation = await erpService.createReservation(
+        items.map(item => ({
+          externalProductId: item.externalProductId,
+          quantity: item.quantity
+        })),
+        name.trim(),
+        crypto.randomUUID()
+      );
+
+      const receiptPayload = createReceiptPayload(reservation);
       const response = await fetch(`${API_URL}/api/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -205,6 +214,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
 
       let message = `*NOVO PEDIDO - PRATOFIT* 🥗\n\n`;
       message += `*Pedido:* ${orderCode}\n`;
+      message += `*Reserva ERP:* ${reservation.reservationId}\n`;
+      message += `*Reserva válida até:* ${new Date(reservation.expiresAt).toLocaleString('pt-BR')}\n`;
       message += `*Cliente:* ${name}\n`;
       
       if (fulfillmentType === 'delivery') {
@@ -232,9 +243,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
       message += `*CUPOM PARA LOJA:* ${receiptLink}\n`;
       message += paymentMethod === 'link' ? `🔗 *LINK DE PAGAMENTO*` : `💠 *PIX*`;
 
-      // debug log
-      console.debug('Enviar pedido message:', message);
       const whatsappUrl = `https://wa.me/5583988109997?text=${encodeURIComponent(message)}`;
+      const receiptTab = window.open('about:blank', '_blank');
+      const whatsappTab = window.open('about:blank', '_blank');
 
       if (receiptLink && receiptTab) {
         try {
@@ -260,7 +271,19 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
       setOrderSent(true);
     } catch (err) {
       console.error('Erro ao finalizar pedido:', err);
-      alert('Não foi possível finalizar o pedido. Tente novamente.');
+      if (reservation) {
+        try {
+          await erpService.cancelReservation(reservation.reservationId);
+        } catch (cancelError) {
+          console.error('Erro ao cancelar reserva após falha do pedido:', cancelError);
+        }
+      }
+
+      setReservationError(
+        err instanceof Error
+          ? `${err.message}${reservation ? ' A reserva criada foi cancelada.' : ''}`
+          : 'Não foi possível reservar o estoque. Tente novamente.'
+      );
     } finally {
       setIsSending(false);
     }
@@ -296,6 +319,11 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, items, s
           {hasLowStockItems && (
             <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-800">
               <strong>Atenção:</strong> Algumas marmitas selecionadas estão com estoque baixo ({lowStockItems.length} {lowStockItems.length > 1 ? 'itens' : 'item'}) e podem ficar indisponíveis por vendas não avisadas.
+            </div>
+          )}
+          {reservationError && (
+            <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+              <strong>Não foi possível finalizar:</strong> {reservationError}
             </div>
           )}
           <div className="space-y-3">

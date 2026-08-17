@@ -1,6 +1,7 @@
 
 export interface MenuItem {
   id: string;
+  externalProductId: string;
   title: string;
   description: string;
   price: number;
@@ -10,6 +11,7 @@ export interface MenuItem {
   category: string;
   tags?: string[];
   stock: number;
+  available: boolean;
 }
 
 export interface CartItem extends MenuItem {

@@ -90,7 +90,7 @@ const CartSheet: React.FC<CartSheetProps> = ({ isOpen, onClose, items, onUpdateQ
             </div>
           ) : (
             items.map((item) => {
-              const hasReachedStock = item.quantity >= item.stock;
+              const hasReachedStock = !item.available || item.quantity >= item.stock;
               return (
                 <div key={item.id} className="flex gap-4 p-3 bg-white border border-gray-100 rounded-xl shadow-sm">
                   <img src={item.imageUrl} alt={item.title} className="w-16 h-16 rounded-lg object-cover border border-gray-50" />

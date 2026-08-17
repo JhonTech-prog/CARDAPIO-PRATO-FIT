@@ -1,36 +1,14 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { MenuItem } from '../types';
-import { Save, ArrowLeft, Package, RefreshCcw, LogOut, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Package, LogOut } from 'lucide-react';
 
 interface AdminDashboardProps {
   items: MenuItem[];
-  onSave: (updatedItems: MenuItem[]) => void;
   onExit: () => void;
 }
 
-const AdminDashboard: React.FC<AdminDashboardProps> = ({ items, onSave, onExit }) => {
-  const [editedItems, setEditedItems] = useState<MenuItem[]>([...items]);
-  const [isSaved, setIsSaved] = useState(false);
-
-  const handleStockChange = (id: string, newStock: string) => {
-    const val = parseInt(newStock) || 0;
-    setEditedItems(prev => prev.map(item => item.id === id ? { ...item, stock: val } : item));
-    setIsSaved(false);
-  };
-
-  const handleSave = () => {
-    onSave(editedItems);
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 3000);
-  };
-
-  const handleReset = () => {
-    if (window.confirm("Deseja reverter as alterações não salvas?")) {
-      setEditedItems([...items]);
-    }
-  };
-
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ items, onExit }) => {
   return (
     <div className="min-h-screen bg-gray-100 p-4 sm:p-8 animate-fade-in-up">
       <div className="max-w-4xl mx-auto">
@@ -48,23 +26,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ items, onSave, onExit }
             </h1>
           </div>
           
-          <div className="flex gap-2">
-            <button 
-              onClick={handleReset}
-              className="bg-white text-gray-600 px-4 py-2 rounded-xl font-bold border border-gray-200 shadow-sm hover:bg-gray-50 flex items-center gap-2 transition-all"
-            >
-              <RefreshCcw size={18} /> Reverter
-            </button>
-            <button 
-              onClick={handleSave}
-              className={`px-6 py-2 rounded-xl font-bold shadow-lg flex items-center gap-2 transition-all active:scale-95 ${isSaved ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
-            >
-              {isSaved ? <><CheckCircle2 size={18} /> Salvo!</> : <><Save size={18} /> Salvar Estoque</>}
-            </button>
-          </div>
         </div>
 
         <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
+          <div className="border-b border-blue-100 bg-blue-50 px-6 py-4 text-sm font-medium text-blue-800">
+            O estoque exibido é sincronizado pelo ERP central e não pode ser alterado neste cardápio.
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead className="bg-gray-50 border-b border-gray-100">
@@ -75,7 +42,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ items, onSave, onExit }
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {editedItems.map((item) => (
+                {items.map((item) => (
                   <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-4">
@@ -93,13 +60,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ items, onSave, onExit }
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex justify-center">
-                        <input 
-                          type="number" 
-                          min="0"
-                          value={item.stock}
-                          onChange={(e) => handleStockChange(item.id, e.target.value)}
-                          className={`w-20 text-center py-2 border-2 rounded-xl font-bold focus:ring-4 transition-all outline-none ${item.stock <= 5 ? 'border-orange-200 bg-orange-50 text-orange-600 focus:ring-orange-100' : 'border-gray-100 focus:ring-emerald-50 focus:border-emerald-200'}`}
-                        />
+                        <span className={`w-20 rounded-xl border-2 py-2 text-center font-bold ${item.stock <= 5 ? 'border-orange-200 bg-orange-50 text-orange-600' : 'border-gray-100 bg-gray-50 text-gray-700'}`}>
+                          {item.available ? item.stock : 0}
+                        </span>
                       </div>
                     </td>
                   </tr>
